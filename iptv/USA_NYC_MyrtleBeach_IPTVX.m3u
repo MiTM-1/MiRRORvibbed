@@ -1,5 +1,131 @@
 #EXTM3U x-tvg-url="https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/US_guide.xml.gz,https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/US_local_guide.xml.gz" url-tvg="https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/US_guide.xml.gz,https://raw.githubusercontent.com/acidjesuz/EPGTalk/master/US_local_guide.xml.gz"
 
+# ===== ALL CHANNELS =====
+#EXTINF:-1 tvg-id="ABC.us@East" group-title="ALL CHANNELS",ABC East
+http://190.11.225.124:5000/live/abc_hd/playlist.m3u8
+#EXTINF:-1 tvg-id="CBS.us@East" group-title="ALL CHANNELS",CBS East
+http://stream.cammonitorplus.net/1783/index.m3u8
+#EXTINF:-1 tvg-id="NBC.us@East" group-title="ALL CHANNELS",NBC East
+http://190.11.225.124:5000/live/nbc_hd/playlist.m3u8
+#EXTINF:-1 tvg-id="Fox.us@East" group-title="ALL CHANNELS",FOX East
+http://stream.cammonitorplus.net/1752/index.m3u8
+#EXTINF:-1 tvg-id="WNBC471.us@HD" group-title="ALL CHANNELS",NBC 4 New York News — WNBC
+https://d368vp0qqzvkid.cloudfront.net/11603/88889709/hls/master.m3u8?ads.xumo_channelId=88889709a&ads.xumo_ifaType=&ads.xumo_providerId=3816&ads.xumo_providerName=NBCNNY
+#EXTINF:-1 tvg-id="WNYW51.us@HD" group-title="ALL CHANNELS",FOX 5 New York — WNYW
+https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg00488-foxdigital-wnyw-lgus/playlist.m3u8
+#EXTINF:-1 tvg-id="MSG.us@SD" group-title="ALL CHANNELS",MSG
+http://23.237.104.106:8080/USA_MSG/index.m3u8
+#EXTINF:-1 tvg-id="WPDETV151.us@HD" group-title="ALL CHANNELS",ABC 15 WPDE Myrtle Beach — Local News
+https://linear-696.frequency.stream/dist/stirr/696/hls/master/playlist.m3u8
+#EXTINF:-1 tvg-id="BeachTVMyrtleBeachTheGrandStrand.us@SD" group-title="ALL CHANNELS",Beach TV Myrtle Beach & The Grand Strand
+https://5ed325193d4e1.streamlock.net:444/LiveTV/MTVHD/playlist.m3u8
+#EXTINF:-1 tvg-id="CBSNews247.us@SD" group-title="ALL CHANNELS",CBS News 24/7
+http://40.160.24.56/CBS_NEWS/index.m3u8
+#EXTINF:-1 tvg-id="NBCNewsNOW.us@SD" group-title="ALL CHANNELS",NBC News NOW
+https://d1bl6tskrpq9ze.cloudfront.net/hls/master.m3u8?ads.xumo_channelId=99984003
+#EXTINF:-1 tvg-id="FoxNewsChannel.us@SD" group-title="ALL CHANNELS",FOX News Channel
+http://45.190.28.50/FOX_NEWS/index.m3u8
+#EXTINF:-1 tvg-id="FoxBusinessNetwork.us@SD" group-title="ALL CHANNELS",FOX Business Network
+https://247preview.foxbusiness.com/hls/live/2020026/fbnv3preview/primary.m3u8
+#EXTINF:-1 tvg-id="FoxWeather.us@SD" group-title="ALL CHANNELS",FOX Weather
+https://247wlive.foxweather.com/stream/index.m3u8
+#EXTINF:-1 tvg-id="BloombergTV.us@US" group-title="ALL CHANNELS",Bloomberg TV US
+https://bloomberg.com/media-manifest/streams/us.m3u8
+#EXTINF:-1 tvg-id="MSNOW.us@SD" group-title="ALL CHANNELS",MS NOW / MSNBC
+https://tvsen6.aynaott.com/msnbc/index.m3u8
+#EXTINF:-1 tvg-id="NewsmaxTV.us@SD" group-title="ALL CHANNELS",Newsmax TV
+https://nmx1ota.akamaized.net/hls/live/2107010/Live_1/index.m3u8
+#EXTINF:-1 tvg-id="CourtTV.us@SD" group-title="ALL CHANNELS",Court TV
+https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg01438-ewscrippscompan-courttv-tablo/playlist.m3u8
+#EXTINF:-1 tvg-id="CheddarNews.us@SD" group-title="ALL CHANNELS",Cheddar News
+https://hls.livecdn.io/cheddar.com/cheddar/playlist.m3u8
+#EXTINF:-1 tvg-id="AE.us@East" group-title="ALL CHANNELS",A&E
+http://23.239.31.26:8989/aande/index.m3u8
+#EXTINF:-1 tvg-id="AMC.us@EastHD" group-title="ALL CHANNELS",AMC
+http://23.239.31.26:8989/amc/index.m3u8
+#EXTINF:-1 tvg-id="BBCAmerica.us@East" group-title="ALL CHANNELS",BBC America
+http://23.239.31.26:8989/bbcamerica/index.m3u8
+#EXTINF:-1 tvg-id="Bravo.us@East" group-title="ALL CHANNELS",Bravo
+http://41.205.93.154/BRAVO/index.m3u8
+#EXTINF:-1 tvg-id="ComedyCentral.us@East" group-title="ALL CHANNELS",Comedy Central
+http://23.237.104.106:8080/USA_COMEDY_CENTRAL/index.m3u8
+#EXTINF:-1 tvg-id="E.us@East" group-title="ALL CHANNELS",E!
+http://23.237.104.106:8080/USA_E/index.m3u8
+#EXTINF:-1 tvg-id="FX.us@East" group-title="ALL CHANNELS",FX
+http://23.237.104.106:8080/USA_FX/index.m3u8
+#EXTINF:-1 tvg-id="FXX.us@East" group-title="ALL CHANNELS",FXX
+http://23.237.104.106:8080/USA_FXX/index.m3u8
+#EXTINF:-1 tvg-id="Freeform.us@East" group-title="ALL CHANNELS",Freeform
+http://190.11.225.124:5000/live/freeform_hd/playlist.m3u8
+#EXTINF:-1 tvg-id="Fuse.us@East" group-title="ALL CHANNELS",Fuse
+http://23.237.104.106:8080/USA_FUSE/index.m3u8
+#EXTINF:-1 tvg-id="USANetwork.us@East" group-title="ALL CHANNELS",USA Network
+http://190.11.225.124:5000/live/usa_hd/playlist.m3u8
+#EXTINF:-1 tvg-id="History.us@East" group-title="ALL CHANNELS",History
+http://212.5.144.156:8080/history/index.m3u8
+#EXTINF:-1 tvg-id="HallmarkChannel.us@East" group-title="ALL CHANNELS",Hallmark Channel
+http://23.237.104.106:8080/USA_HALLMARK/index.m3u8
+#EXTINF:-1 tvg-id="HallmarkMystery.us@East" group-title="ALL CHANNELS",Hallmark Mystery
+http://40.160.24.53/HALLMARK_MOVIES_AND_MYSTERIES/index.m3u8
+#EXTINF:-1 tvg-id="HallmarkMoviesMore.us@SD" group-title="ALL CHANNELS",Hallmark Movies & More
+https://dbrb49pjoymg4.cloudfront.net/v1/master/3fec3e5cac39a52b2132f9c66c83dae043dc17d4/prod_default_xumo-ams-aws/master.m3u8?ads.xumo_channelId=99991709
+#EXTINF:-1 tvg-id="Lifetime.us@East" group-title="ALL CHANNELS",Lifetime
+https://tvsen7.aynaott.com/lifetime/index.m3u8
+#EXTINF:-1 tvg-id="LifetimeMovies.us@East" group-title="ALL CHANNELS",Lifetime Movies
+http://23.237.104.106:8080/USA_LMN/index.m3u8
+#EXTINF:-1 tvg-id="MTV.us@East" group-title="ALL CHANNELS",MTV
+http://198.58.104.90:8989/mtv/index.m3u8
+#EXTINF:-1 tvg-id="MTV2.us@East" group-title="ALL CHANNELS",MTV2
+http://198.58.104.90:8989/mtv2/index.m3u8
+#EXTINF:-1 tvg-id="MTVLive.us@SD" group-title="ALL CHANNELS",MTV Live
+http://23.237.104.106:8080/USA_MTV_LIVE/index.m3u8
+#EXTINF:-1 tvg-id="Nickelodeon.us@East" group-title="ALL CHANNELS",Nickelodeon
+https://sra72yz.s.gy/NICKELODEON_EAST_US.m3u8
+#EXTINF:-1 tvg-id="DisneyChannel.us@East" group-title="ALL CHANNELS",Disney Channel
+http://212.5.144.156/disney/index.m3u8
+#EXTINF:-1 tvg-id="CMT.us@East" group-title="ALL CHANNELS",CMT
+http://23.237.104.106:8080/USA_CMT/index.m3u8
+#EXTINF:-1 tvg-id="NationalGeographic.us@East" group-title="ALL CHANNELS",National Geographic
+http://40.160.24.53/NAT_GEO/index.m3u8
+#EXTINF:-1 tvg-id="NationalGeographicWild.us@East" group-title="ALL CHANNELS",National Geographic Wild
+http://40.160.24.53/NAT_GEO_WILD/index.m3u8
+#EXTINF:-1 tvg-id="SYFY.us@East" group-title="ALL CHANNELS",SYFY
+http://23.237.104.106:8080/USA_SYFY/index.m3u8
+#EXTINF:-1 tvg-id="Oxygen.us@East" group-title="ALL CHANNELS",Oxygen
+http://198.58.104.90:8989/oxygen/index.m3u8
+#EXTINF:-1 tvg-id="WeTV.us@East" group-title="ALL CHANNELS",WE tv
+https://streamer1.nexgen.bz/WE_TV/index.m3u8
+#EXTINF:-1 tvg-id="IONTV.us@East" group-title="ALL CHANNELS",ION TV
+http://23.237.104.106:8080/USA_ION/index.m3u8
+#EXTINF:-1 tvg-id="IONPlus.us@East" group-title="ALL CHANNELS",ION Plus
+https://cdn-uw2-prod.tsv2.amagi.tv/linear/amg01438-ewscrippscompan-ionplus-tablo/playlist.m3u8
+#EXTINF:-1 tvg-id="IFC.us@East" group-title="ALL CHANNELS",IFC
+http://23.237.104.106:8080/USA_IFC/index.m3u8
+#EXTINF:-1 tvg-id="GreatAmericanFamily.us@SD" group-title="ALL CHANNELS",Great American Family
+http://40.160.24.58/GAC_FAMILY/index.m3u8
+#EXTINF:-1 tvg-id="AXSTV.us@East" group-title="ALL CHANNELS",AXS TV
+https://tvsen3.aynaott.com/P2fJzfsg/index.m3u8
+#EXTINF:-1 tvg-id="Buzzr.us@SD" group-title="ALL CHANNELS",BUZZR
+https://buzzr-samsungus.amagi.tv/playlist.m3u8
+#EXTINF:-1 tvg-id="GameShowCentral.us@SD" group-title="ALL CHANNELS",Game Show Central
+https://855649d1dca1413dad89e627e1727d97.mediatailor.us-east-1.amazonaws.com/v1/master/44f73ba4d03e9607dcd9bebdcb8494d86964f1d8/Samsung_GameShowCentral/playlist.m3u8
+#EXTINF:-1 tvg-id="FoxSports1.us@HD" group-title="ALL CHANNELS",FOX Sports 1
+http://190.11.225.124:5000/live/fs1_hd/playlist.m3u8
+#EXTINF:-1 tvg-id="ESPNU.us@SD" group-title="ALL CHANNELS",ESPNU
+http://23.237.104.106:8080/USA_ESPNU/index.m3u8
+#EXTINF:-1 tvg-id="NBATV.us@SD" group-title="ALL CHANNELS",NBA TV
+http://23.237.104.106:8080/USA_NBA/index.m3u8
+#EXTINF:-1 tvg-id="NFLNetwork.us@SD" group-title="ALL CHANNELS",NFL Network
+http://23.237.104.106:8080/USA_NFL_NETWORK/index.m3u8
+#EXTINF:-1 tvg-id="BigTenNetwork.us@SD" group-title="ALL CHANNELS",Big Ten Network
+http://23.237.104.106:8080/USA_BTN/index.m3u8
+#EXTINF:-1 tvg-id="ACCNetwork.us@SD" group-title="ALL CHANNELS",ACC Network
+http://23.239.31.26:8989/accnetwork/index.m3u8
+#EXTINF:-1 tvg-id="CBSSportsGolazoNetwork.us@SD" group-title="ALL CHANNELS",CBS Sports Golazo Network
+https://dai.google.com/linear/hls/event/7f3Wv6f7QEKfQna22jHqLQ/master.m3u8
+#EXTINF:-1 tvg-id="beINSPORTSXTRA.us@SD" group-title="ALL CHANNELS",beIN SPORTS XTRA
+https://bein-xtra-bein.amagi.tv/playlist.m3u8
+
 # ===== NETWORK TV =====
 #EXTINF:-1 tvg-id="ABC.us@East" group-title="NETWORK TV",ABC East
 http://190.11.225.124:5000/live/abc_hd/playlist.m3u8
