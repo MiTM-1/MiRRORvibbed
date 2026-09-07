@@ -1,0 +1,170 @@
+import copy
+import gzip
+import os
+import urllib.request
+import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
+
+SOURCES = {
+    'us2': 'https://epgshare01.online/epgshare01/epg_ripper_US2.xml.gz',
+    'locals': 'https://epgshare01.online/epgshare01/epg_ripper_US_LOCALS1.xml.gz',
+    'plex': 'https://epgshare01.online/epgshare01/epg_ripper_PLEX1.xml.gz',
+}
+
+MAP = {
+    'us2': {
+        'ABC.National.Feed.us2': ['ABC.us@East'],
+        'CBS.Streaming.SD.East.feed.us2': ['CBS.us@East'],
+        'NBC.East.Stream.us2': ['NBC.us@East'],
+        'MSG.National.us2': ['MSG.us@SD'],
+        'Fox.News.Channel.HD.us2': ['FoxNewsChannel.us@SD'],
+        'Fox.Business.HD.us2': ['FoxBusinessNetwork.us@SD'],
+        'Bloomberg.HD.us2': ['BloombergTV.us@US'],
+        'MS.NOW.HD.us2': ['MSNOW.us@SD'],
+        'Newsmax.TV.HD.us2': ['NewsmaxTV.us@SD'],
+        'Court.TV.us2': ['CourtTV.us@SD'],
+        'Cheddar.us2': ['CheddarNews.us@SD'],
+        'A.and.E.HD.East.us2': ['AE.us@East'],
+        'AMC.HD.us2': ['AMC.us@East'],
+        'BBC.America.HD.us2': ['BBCAmerica.us@East'],
+        'Bravo.HD.us2': ['Bravo.us@East'],
+        'Comedy.Central.HD.us2': ['ComedyCentral.us@East'],
+        'E!.Entertainment.Television.HD.us2': ['E.us@East'],
+        'FX.HD.us2': ['FX.us@East'],
+        'FXX.HD.us2': ['FXX.us@East'],
+        'Freeform.HD.us2': ['Freeform.us@East'],
+        'Fuse.HD.us2': ['Fuse.us@East'],
+        'USA.Network.HD.us2': ['USANetwork.us@East'],
+        'History.HD.us2': ['History.us@East'],
+        'Hallmark.Channel.HD.us2': ['HallmarkChannel.us@East'],
+        'Hallmark.Mystery.HD.us2': ['HallmarkMystery.us@East'],
+        'Lifetime.HD.us2': ['Lifetime.us@East'],
+        'LMN.HD.us2': ['LifetimeMovies.us@East'],
+        'MTV.-.Music.Television.HD.us2': ['MTV.us@East'],
+        'MTV2:.Music.Television.HD.us2': ['MTV2.us@East'],
+        'MTVLIVE.us2': ['MTVLive.us@SD'],
+        'Nickelodeon.HD.us2': ['Nickelodeon.us@East'],
+        'Disney.Channel.HD.us2': ['DisneyChannel.us@East'],
+        'CMT.HD.us2': ['CMT.us@East'],
+        'National.Geographic.HD.us2': ['NationalGeographic.us@East'],
+        'National.Geographic.Wild.HD.us2': ['NationalGeographicWild.us@East'],
+        'Syfy.HD.us2': ['SYFY.us@East'],
+        'Oxygen.True.Crime.HD.us2': ['Oxygen.us@East'],
+        'WE.tv.HD.us2': ['WeTV.us@East'],
+        'ION.Television.HD.us2': ['IONTV.us@East'],
+        'IFC.HD.us2': ['IFC.us@East'],
+        'Great.American.Family.HD.us2': ['GreatAmericanFamily.us@SD'],
+        'AXS.TV.us2': ['AXSTV.us@East'],
+        'BUZZR.Stream.us2': ['Buzzr.us@SD'],
+        'FS1.HD.us2': ['FoxSports1.us@HD'],
+        'ESPNU.HD.us2': ['ESPNU.us@SD'],
+        'NBA.TV.HD.us2': ['NBATV.us@SD'],
+        'NFL.Network.HD.us2': ['NFLNetwork.us@SD'],
+        'Big.Ten.Network.HD.us2': ['BigTenNetwork.us@SD'],
+        'ACC.Network.us2': ['ACCNetwork.us@SD'],
+        'CBS.Sports.Golazo.Network.us2': ['CBSSportsGolazoNetwork.us@SD'],
+    },
+    'locals': {
+        'WNBC-DT.us_locals1': ['WNBC471.us@HD'],
+        'WNYW-DT.us_locals1': ['WNYW51.us@HD', 'Fox.us@East'],
+        'WPDE-DT.us_locals1': ['WPDETV151.us@HD'],
+    },
+    'plex': {
+        'plex.tv.CBS.News.24/7.plex': ['CBSNews247.us@SD'],
+        'plex.tv.NBC.News.NOW.plex': ['NBCNewsNOW.us@SD'],
+        'plex.tv.FOX.Weather.plex': ['FoxWeather.us@SD'],
+        'plex.tv.Hallmark.Movies.&.More.plex': ['HallmarkMoviesMore.us@SD'],
+        'plex.tv.ION.Plus.plex': ['IONPlus.us@East'],
+        'plex.tv.BUZZR.plex': ['Buzzr.us@SD'],
+        'plex.tv.Game.Show.Central.plex': ['GameShowCentral.us@SD'],
+        'plex.tv.beIN.SPORTS.XTRA.plex': ['beINSPORTSXTRA.us@SD'],
+    },
+}
+
+os.makedirs('iptv', exist_ok=True)
+tmp = '/tmp/american-tv-epg'
+os.makedirs(tmp, exist_ok=True)
+
+def download(url, path):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 MiTM-EPG/2.0'})
+    with urllib.request.urlopen(req, timeout=120) as r, open(path, 'wb') as f:
+        while True:
+            chunk = r.read(1024 * 1024)
+            if not chunk:
+                break
+            f.write(chunk)
+
+selected_channels = {}
+programmes = []
+matched_sources = set()
+
+for key, url in SOURCES.items():
+    path = os.path.join(tmp, key + '.xml.gz')
+    download(url, path)
+    source_map = MAP[key]
+    with gzip.open(path, 'rb') as fh:
+        for event, elem in ET.iterparse(fh, events=('end',)):
+            tag = elem.tag.split('}')[-1]
+            if tag == 'channel':
+                sid = elem.attrib.get('id', '')
+                if sid in source_map:
+                    for target in source_map[sid]:
+                        if target not in selected_channels:
+                            clone = copy.deepcopy(elem)
+                            clone.set('id', target)
+                            selected_channels[target] = clone
+                            matched_sources.add((key, sid, target))
+                elem.clear()
+            elif tag == 'programme':
+                sid = elem.attrib.get('channel', '')
+                if sid in source_map:
+                    for target in source_map[sid]:
+                        clone = copy.deepcopy(elem)
+                        clone.set('channel', target)
+                        programmes.append(clone)
+                elem.clear()
+
+root = ET.Element('tv', {
+    'generator-info-name': 'MiTM American TV EPG',
+    'generator-info-url': 'https://github.com/MiTM-1/MiRRORvibbed',
+})
+for target in sorted(selected_channels):
+    root.append(selected_channels[target])
+for programme in programmes:
+    root.append(programme)
+
+out_xml = 'iptv/AmericanTV_EPG.xml'
+tree = ET.ElementTree(root)
+ET.indent(tree, space='  ')
+tree.write(out_xml, encoding='utf-8', xml_declaration=True)
+
+out_gz = out_xml + '.gz'
+with open(out_xml, 'rb') as src, gzip.open(out_gz, 'wb', compresslevel=9) as dst:
+    while True:
+        chunk = src.read(1024 * 1024)
+        if not chunk:
+            break
+        dst.write(chunk)
+
+title_count = 0
+desc_count = 0
+for programme in programmes:
+    title = programme.find('title')
+    if title is not None and (title.text or '').strip():
+        title_count += 1
+    desc = programme.find('desc')
+    if desc is not None and (desc.text or '').strip():
+        desc_count += 1
+
+if programmes and title_count == 0:
+    raise RuntimeError('EPG validation failed: programme titles were stripped')
+
+with open('iptv/AmericanTV_EPG_STATUS.txt', 'w', encoding='utf-8') as f:
+    f.write('Generated: ' + datetime.now(timezone.utc).isoformat() + '\n')
+    f.write('Mapped channels: ' + str(len(selected_channels)) + '\n')
+    f.write('Programmes: ' + str(len(programmes)) + '\n')
+    f.write('Programmes with titles: ' + str(title_count) + '\n')
+    f.write('Programmes with descriptions: ' + str(desc_count) + '\n')
+    f.write('\nMapped IDs:\n')
+    for key, sid, target in sorted(matched_sources):
+        f.write(f'{target} <- {key}:{sid}\n')
