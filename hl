@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+mkdir -p /workspace/.cache/huggingface
+rm -f /workspace/hf-login.log /workspace/hf-login.pid
+nohup env HF_HOME=/workspace/.cache/huggingface /root/.local/bin/uvx --python 3.12 hf auth login --format agent > /workspace/hf-login.log 2>&1 &
+echo $! > /workspace/hf-login.pid
+sleep 4
+cat /workspace/hf-login.log
