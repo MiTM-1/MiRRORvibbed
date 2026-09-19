@@ -1,0 +1,206 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VOL=/workspace
+MODELS=$VOL/models
+STATE=$VOL/mirrorvidgen
+EXTRAS=$STATE/extras
+WORKFLOWS=$STATE/workflows
+CUSTOM=$STATE/custom_nodes
+ORCH=$STATE/orchestration
+HF_HOME=$VOL/.cache/huggingface
+
+mkdir -p "$MODELS/loras" "$MODELS/vae" "$MODELS/model_patches" "$MODELS/latent_upscale_models" "$EXTRAS" "$WORKFLOWS" "$CUSTOM" "$ORCH"
+
+if [ ! -s "$HF_HOME/token" ]; then
+  echo 'ERROR: Hugging Face token not found at /workspace/.cache/huggingface/token'
+  exit 1
+fi
+TOKEN="$(cat "$HF_HOME/token")"
+
+echo '=================================================='
+echo ' MiRRORvidgen — LTX-2.5 extras installer'
+echo ' Prompt Enhancer: EXCLUDED'
+echo '=================================================='
+echo
+
+hf_fetch() {
+  repo="$1"
+  rel="$2"
+  dest="$3"
+  url="https://huggingface.co/${repo}/resolve/main/${rel}"
+  mkdir -p "$(dirname "$dest")"
+
+  hdr="$(mktemp)"
+  if ! curl -fsSI -H "Authorization: Bearer $TOKEN" "$url" > "$hdr"; then
+    rm -f "$hdr"
+    echo "ERROR: cannot access $repo / $rel"
+    echo 'If this is a gated add-on, open its Hugging Face page and click Agree and Access, then rerun this installer.'
+    exit 20
+  fi
+
+  remote_size="$(tr -d '\r' < "$hdr" | awk -F': *' 'tolower($1)=="x-linked-size"{print $2}' | tail -1)"
+  remote_sha="$(tr -d '\r' < "$hdr" | awk -F': *' 'tolower($1)=="x-linked-etag"{gsub(/\"/,"",$2); print $2}' | tail -1)"
+  rm -f "$hdr"
+
+  if [ -z "$remote_size" ] || [ -z "$remote_sha" ]; then
+    echo "ERROR: missing official metadata for $repo / $rel"
+    exit 21
+  fi
+
+  name="$(basename "$dest")"
+  if [ -f "$dest" ]; then
+    local_size="$(stat -c%s "$dest" 2>/dev/null || echo 0)"
+    if [ "$local_size" = "$remote_size" ] && echo "$remote_sha  $dest" | sha256sum -c - >/dev/null 2>&1; then
+      echo "SKIP verified: $name"
+      return 0
+    fi
+  fi
+
+  part="${dest}.part"
+  if [ -f "$part" ]; then
+    part_size="$(stat -c%s "$part" 2>/dev/null || echo 0)"
+    if [ "$part_size" = "$remote_size" ]; then
+      if echo "$remote_sha  $part" | sha256sum -c - >/dev/null 2>&1; then
+        mv -f "$part" "$dest"
+        echo "VERIFIED: $name"
+        return 0
+      fi
+      rm -f "$part"
+    elif [ "$part_size" -gt "$remote_size" ]; then
+      rm -f "$part"
+    fi
+  fi
+
+  echo "Downloading: $name ($(awk "BEGIN{printf \"%.2f\", $remote_size/1000000000}") GB)"
+  if [ -f "$part" ]; then
+    if ! curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 -C - -H "Authorization: Bearer $TOKEN" -o "$part" "$url?download=true"; then
+      echo "Resume failed for $name; retrying cleanly..."
+      rm -f "$part"
+      curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 -H "Authorization: Bearer $TOKEN" -o "$part" "$url?download=true"
+    fi
+  else
+    curl -fL --retry 5 --retry-delay 5 --connect-timeout 30 -H "Authorization: Bearer $TOKEN" -o "$part" "$url?download=true"
+  fi
+
+  final_size="$(stat -c%s "$part")"
+  if [ "$final_size" != "$remote_size" ]; then
+    echo "ERROR: size mismatch for $name ($final_size != $remote_size)"
+    exit 22
+  fi
+  echo "$remote_sha  $part" | sha256sum -c -
+  mv -f "$part" "$dest"
+  echo "VERIFIED: $name"
+}
+
+echo '[1/6] Ingredients / identity reference control'
+hf_fetch 'Lightricks/LTX-2.5-22b-IC-LoRA-Ingredients' \
+  'ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors' \
+  "$MODELS/loras/ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors"
+
+echo '[2/6] Motion Track control (official LTX-2.5 workflow compatibility adapter)'
+hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Motion-Track-Control' \
+  'ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors' \
+  "$MODELS/loras/ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors"
+
+echo '[3/6] Union Control — Canny + Depth + Pose (official LTX-2.5 workflow compatibility adapter)'
+hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control' \
+  'ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors' \
+  "$MODELS/loras/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
+
+echo '[4/6] Temporal x2 latent upscaler'
+hf_fetch 'Lightricks/LTX-2.5' \
+  'latent_upscale_models/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors' \
+  "$MODELS/latent_upscale_models/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors"
+
+echo '[5/6] Auto Duration head'
+hf_fetch 'Lightricks/LTX-2.5' \
+  'model_patches/ltx-2.5-duration-head-bf16.safetensors' \
+  "$MODELS/model_patches/ltx-2.5-duration-head-bf16.safetensors"
+
+echo '[6/6] Faster convolutional video VAE'
+hf_fetch 'Lightricks/LTX-2.5' \
+  'vae/ltx-2.5-video-vae-conv-bf16.safetensors' \
+  "$MODELS/vae/ltx-2.5-video-vae-conv-bf16.safetensors"
+
+echo
+echo 'Installing official workflow definitions...'
+curl -fL --retry 4 -o "$WORKFLOWS/video_ltx2_5_flf2v.json" 'https://raw.githubusercontent.com/Comfy-Org/workflow_templates/main/templates/video_ltx2_5_flf2v.json'
+curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json'
+curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_ICLoRA_Motion_Track_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_ICLoRA_Motion_Track_Distilled.json'
+curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_ICLoRA_Union_Control_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_ICLoRA_Union_Control_Distilled.json'
+curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_T2V_I2V_Two_Stage_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_T2V_I2V_Two_Stage_Distilled.json'
+
+echo 'Staging official LTXVideo custom nodes...'
+if ! command -v git >/dev/null 2>&1; then
+  apt-get update -y >/dev/null
+  DEBIAN_FRONTEND=noninteractive apt-get install -y git >/dev/null
+fi
+if [ -d "$CUSTOM/ComfyUI-LTXVideo/.git" ]; then
+  git -C "$CUSTOM/ComfyUI-LTXVideo" fetch --depth 1 origin master >/dev/null 2>&1 || true
+  git -C "$CUSTOM/ComfyUI-LTXVideo" reset --hard origin/master >/dev/null 2>&1 || true
+else
+  rm -rf "$CUSTOM/ComfyUI-LTXVideo"
+  git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git "$CUSTOM/ComfyUI-LTXVideo" >/dev/null
+fi
+
+echo 'Writing MiRRORdirector / MiRRORextend orchestration manifests...'
+cat > "$ORCH/mirrordirector.json" <<'JSON'
+{
+  "name": "MiRRORdirector",
+  "version": 1,
+  "prompt_enhancer": false,
+  "max_segment_seconds": 15,
+  "continuity": {
+    "carry_seed_when_useful": true,
+    "carry_identity_references": true,
+    "carry_environment_references": true,
+    "prefer_native_multishot": true,
+    "fallback_chain_previous_tail": true
+  },
+  "modes": ["single", "multishot", "chained_30s", "extend"]
+}
+JSON
+
+cat > "$ORCH/mirrorextend.json" <<'JSON'
+{
+  "name": "MiRRORextend",
+  "version": 1,
+  "prompt_enhancer": false,
+  "forward_strategy": "previous_tail_or_last_frame_as_next_condition",
+  "backward_strategy": "first_frame_or_suffix_condition_when_supported",
+  "stitch": {"preserve_audio": true, "avoid_duplicate_boundary_frame": true},
+  "identity": "reuse_project_reference_sheet_when_present"
+}
+JSON
+
+cat > "$STATE/EXTRAS_INSTALLED.txt" <<'TXT'
+MiRRORvidgen LTX-2.5 extras
+Prompt Enhancer: NOT INSTALLED / DISABLED
+Installed:
+- Ingredients / identity reference IC-LoRA
+- Motion Track IC-LoRA
+- Union Control IC-LoRA (Canny + Depth + Pose)
+- Temporal x2 latent upscaler
+- Auto Duration head
+- Faster convolutional video VAE
+- First & Last Frame workflow
+- Official Ingredients workflow
+- Official Motion Track workflow
+- Official Union Control workflow
+- Official two-stage T2V/I2V workflow
+- Official ComfyUI-LTXVideo custom nodes staged
+- MiRRORdirector orchestration manifest
+- MiRRORextend orchestration manifest
+TXT
+
+touch "$STATE/LTX25_EXTRAS_READY"
+
+echo
+echo '=================================================='
+echo ' MiRRORvidgen LTX-2.5 EXTRAS READY'
+echo ' Prompt Enhancer was NOT installed.'
+echo '=================================================='
+du -sh "$VOL" "$MODELS" 2>/dev/null || true
+echo
+du -h --max-depth=1 "$MODELS" 2>/dev/null | sort -h || true
