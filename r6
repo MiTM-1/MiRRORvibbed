@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VOL=/workspace
+STATE=$VOL/mirrorvidgen
+MODEL=$VOL/models/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors
+PART=${MODEL}.part
+HF_HOME=$VOL/.cache/huggingface
+URL='https://huggingface.co/Lightricks/LTX-2.5/resolve/main/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors'
+
+mkdir -p "$STATE" "$(dirname "$MODEL")" "$VOL/models/clip"
+
+if [ ! -s "$HF_HOME/token" ]; then
+  echo 'ERROR: Hugging Face token not found.'
+  exit 1
+fi
+TOKEN="$(cat "$HF_HOME/token")"
+
+echo 'Checking official Hugging Face metadata...'
+HDR="$(mktemp)"
+curl -fsSI -H "Authorization: Bearer $TOKEN" "$URL" > "$HDR"
+REMOTE_SIZE="$(tr -d '\r' < "$HDR" | awk -F': *' 'tolower($1)=="x-linked-size"{print $2}' | tail -1)"
+REMOTE_SHA="$(tr -d '\r' < "$HDR" | awk -F': *' 'tolower($1)=="x-linked-etag"{gsub(/\"/,"",$2); print $2}' | tail -1)"
+rm -f "$HDR"
+
+if [ -z "$REMOTE_SIZE" ] || [ -z "$REMOTE_SHA" ]; then
+  echo 'ERROR: Could not read x-linked-size / x-linked-etag.'
+  exit 1
+fi
+
+echo "Remote size: $REMOTE_SIZE"
+echo "Remote SHA256: $REMOTE_SHA"
+
+if [ -f "$MODEL" ]; then
+  CUR="$(stat -c%s "$MODEL")"
+  echo "Final file already exists: $CUR bytes"
+  if [ "$CUR" = "$REMOTE_SIZE" ] && echo "$REMOTE_SHA  $MODEL" | sha256sum -c -; then
+    touch "$STATE/LTX25_READY"
+    ln -sfn ../text_encoders/$(basename "$MODEL") "$VOL/models/clip/$(basename "$MODEL")"
+    echo 'LTX-2.5 READY'
+    exit 0
+  fi
+  mv -f "$MODEL" "$PART"
+fi
+
+if [ ! -f "$PART" ]; then
+  echo 'ERROR: partial text encoder file not found.'
+  exit 1
+fi
+
+CUR="$(stat -c%s "$PART")"
+echo "Current partial size: $CUR"
+
+if [ "$CUR" -gt "$REMOTE_SIZE" ]; then
+  echo 'ERROR: partial file is larger than official remote file.'
+  exit 1
+fi
+
+if [ "$CUR" -lt "$REMOTE_SIZE" ]; then
+  END=$((REMOTE_SIZE-1))
+  MISSING=$((REMOTE_SIZE-CUR))
+  echo "Missing bytes: $MISSING"
+  echo "Fetching exact tail range: $CUR-$END"
+  TAIL="$STATE/text-encoder-tail.bin"
+  rm -f "$TAIL"
+  CODE="$(curl -sS -L --retry 5 --retry-all-errors --connect-timeout 30 --max-filesize 10000000 \
+    -H "Authorization: Bearer $TOKEN" \
+    -H "Range: bytes=$CUR-$END" \
+    -o "$TAIL" -w '%{http_code}' "$URL" || true)"
+  echo "HTTP status: $CODE"
+  if [ "$CODE" != "206" ]; then
+    echo 'ERROR: Hugging Face did not return a ranged 206 response.'
+    rm -f "$TAIL"
+    exit 2
+  fi
+  TAIL_SIZE="$(stat -c%s "$TAIL")"
+  echo "Tail bytes received: $TAIL_SIZE"
+  if [ "$TAIL_SIZE" != "$MISSING" ]; then
+    echo 'ERROR: tail size does not match missing byte count.'
+    rm -f "$TAIL"
+    exit 3
+  fi
+  cat "$TAIL" >> "$PART"
+  rm -f "$TAIL"
+fi
+
+FINAL_SIZE="$(stat -c%s "$PART")"
+echo "Final candidate size: $FINAL_SIZE"
+if [ "$FINAL_SIZE" != "$REMOTE_SIZE" ]; then
+  echo 'ERROR: size still does not match official file.'
+  exit 4
+fi
+
+echo 'Verifying SHA256 — this can take a few minutes...'
+echo "$REMOTE_SHA  $PART" | sha256sum -c -
+mv -f "$PART" "$MODEL"
+ln -sfn ../text_encoders/$(basename "$MODEL") "$VOL/models/clip/$(basename "$MODEL")"
+
+TRANSFORMER="$VOL/models/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"
+if [ ! -f "$TRANSFORMER" ]; then
+  echo 'ERROR: transformer is missing.'
+  exit 5
+fi
+
+touch "$STATE/LTX25_READY"
+echo '===================================='
+echo 'MiRRORvidgen LTX-2.5 CORE READY'
+echo '===================================='
