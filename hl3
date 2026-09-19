@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+mkdir -p /workspace/.cache/huggingface
+export HF_HOME=/workspace/.cache/huggingface
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+fi
+
+pkill -f "huggingface_hub._login.*_device_code_login" 2>/dev/null || true
+rm -f /workspace/hf-login2.log /workspace/hf-login2.pid
+
+nohup env HF_HOME=/workspace/.cache/huggingface \
+  /root/.local/bin/uv run --python 3.12 --with huggingface_hub \
+  python -c 'from huggingface_hub._login import _device_code_login; _device_code_login()' \
+  > /workspace/hf-login2.log 2>&1 &
+
+echo $! > /workspace/hf-login2.pid
+sleep 5
+cat /workspace/hf-login2.log
