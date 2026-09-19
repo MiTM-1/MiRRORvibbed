@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VOL=/workspace
+MODELS=$VOL/models
+STATE=$VOL/mirrorvidgen
+LOG=$STATE/ltx25-direct.log
+HF_HOME=$VOL/.cache/huggingface
+
+mkdir -p "$STATE" "$MODELS/diffusion_models" "$MODELS/text_encoders" "$MODELS/unet" "$MODELS/clip"
+
+if [ ! -s "$HF_HOME/token" ]; then
+  echo 'ERROR: Hugging Face token not found. Do not continue.'
+  exit 1
+fi
+
+cat > "$STATE/ltx25-direct-worker.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+
+VOL=/workspace
+MODELS=$VOL/models
+STATE=$VOL/mirrorvidgen
+HF_HOME=$VOL/.cache/huggingface
+TOKEN="$(cat "$HF_HOME/token")"
+BASE='https://huggingface.co/Lightricks/LTX-2.5/resolve/main'
+
+download_one() {
+  rel="$1"
+  dest="$2"
+  expected_size="$3"
+  expected_sha="$4"
+  part="${dest}.part"
+  mkdir -p "$(dirname "$dest")"
+
+  if [ -f "$dest" ]; then
+    size="$(stat -c%s "$dest" 2>/dev/null || echo 0)"
+    if [ "$size" = "$expected_size" ] && echo "$expected_sha  $dest" | sha256sum -c - >/dev/null 2>&1; then
+      echo "[$(date -Is)] already verified: $(basename "$dest")"
+      return 0
+    fi
+    mv -f "$dest" "$part"
+  fi
+
+  if [ -f "$part" ]; then
+    size="$(stat -c%s "$part" 2>/dev/null || echo 0)"
+    if [ "$size" -gt "$expected_size" ]; then
+      rm -f "$part"
+    fi
+  fi
+
+  echo "[$(date -Is)] downloading: $(basename "$dest")"
+  while true; do
+    size="$(stat -c%s "$part" 2>/dev/null || echo 0)"
+    echo "[$(date -Is)] current bytes: $size / $expected_size"
+    if [ "$size" = "$expected_size" ]; then
+      break
+    fi
+    curl -fL --connect-timeout 30 --speed-limit 1024 --speed-time 120 -C - \
+      -H "Authorization: Bearer $TOKEN" \
+      -o "$part" "$BASE/$rel?download=true" || true
+    sleep 5
+  done
+
+  echo "[$(date -Is)] verifying SHA256: $(basename "$dest")"
+  echo "$expected_sha  $part" | sha256sum -c -
+  mv -f "$part" "$dest"
+  echo "[$(date -Is)] verified complete: $(basename "$dest")"
+}
+
+download_one \
+  'diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors' \
+  "$MODELS/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors" \
+  '21504034224' \
+  'c4279eeff115cbeaca494bd2183e7d768c38fe85a184dc6afbb7159157c44334'
+
+download_one \
+  'text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors' \
+  "$MODELS/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors" \
+  '15372971786' \
+  '09a89e084de1a149c3de60cfe9dfd3e5161967eb09eea39e806fcdeffdd568de'
+
+ln -sfn ../diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors \
+  "$MODELS/unet/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors"
+ln -sfn ../text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors \
+  "$MODELS/clip/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors"
+
+find "$MODELS/.cache/huggingface/download" -type f -name '*.incomplete' -delete 2>/dev/null || true
+touch "$STATE/LTX25_READY"
+echo "[$(date -Is)] LTX-2.5 READY"
+EOS
+
+chmod +x "$STATE/ltx25-direct-worker.sh"
+rm -f "$STATE/LTX25_READY"
+: > "$LOG"
+nohup setsid bash "$STATE/ltx25-direct-worker.sh" > "$LOG" 2>&1 < /dev/null &
+echo $! > "$STATE/ltx25-direct.pid"
+
+cat > /usr/local/bin/mvstatus <<'EOS'
+#!/usr/bin/env bash
+STATE=/workspace/mirrorvidgen
+echo 'MiRRORvidgen LTX-2.5 status'
+if [ -f "$STATE/LTX25_READY" ]; then echo 'READY'; else echo 'DOWNLOADING'; fi
+echo '-----'
+for f in \
+  /workspace/models/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors.part \
+  /workspace/models/diffusion_models/ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors \
+  /workspace/models/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors.part \
+  /workspace/models/text_encoders/gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors
+do
+  [ -f "$f" ] && ls -lh "$f"
+done
+echo '-----'
+tail -n 12 "$STATE/ltx25-direct.log" 2>/dev/null || true
+EOS
+chmod +x /usr/local/bin/mvstatus
+
+sleep 2
+echo 'MiRRORvidgen direct-resume downloader started'
+echo 'Type mvstatus to check progress.'
+tail -n 8 "$LOG" || true
