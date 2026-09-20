@@ -94,9 +94,9 @@ hf_fetch() {
 }
 
 echo '[1/6] Ingredients / identity reference control'
-hf_fetch 'Lightricks/LTX-2.5-22b-IC-LoRA-Ingredients' \
-  'ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors' \
-  "$MODELS/loras/ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors"
+hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Ingredients' \
+  'ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors' \
+  "$MODELS/loras/ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors"
 
 echo '[2/6] Motion Track control (official LTX-2.5 workflow compatibility adapter)'
 hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Motion-Track-Control' \
@@ -109,7 +109,7 @@ hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control' \
   "$MODELS/loras/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
 
 echo '[3b/6] V2V / continuation deblur control'
-hf_fetch 'Lightricks/LTX-2.5-22b-IC-LoRA-Deblur' \
+hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Deblur' \
   'ltx-2.3-22b-ic-lora-deblur-0.9.safetensors' \
   "$MODELS/loras/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors"
 
