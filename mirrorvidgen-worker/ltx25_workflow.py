@@ -225,6 +225,20 @@ MODEL_ROOTS = (
     Path("/comfyui/models"),
 )
 
+# The official 2.5 example graphs still use the 2.3 IC-LoRA weights for
+# Ingredients and V2V deblur. Some earlier volume installs used the 2.5
+# filename aliases, so accept either exact installed filename and always pass
+# the one that actually exists to ComfyUI. This is a real file check, never a
+# capability override.
+INGREDIENTS_LORA_FILENAMES = (
+    "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-ingredients-0.9.safetensors",
+)
+DEBLUR_LORA_FILENAMES = (
+    "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
+    "ltx-2.5-22b-ic-lora-deblur-0.9.safetensors",
+)
+
 
 class CapabilityUnavailable(RuntimeError):
     """A deliberate preflight lock, never a fallback to another workflow."""
@@ -251,6 +265,23 @@ def _model_present(filename, subdirectories=("", "loras", "vae", "text_encoders"
     if os.environ.get("MIRRORVIDGEN_SKIP_MODEL_PREFLIGHT") == "1":
         return True
     return any(root.exists() and any(root.rglob(filename)) for root in MODEL_ROOTS)
+
+
+def _first_present(filenames):
+    """Return the first installed filename from an explicit compatibility set."""
+    for filename in filenames:
+        if _model_present(filename):
+            return filename
+    return None
+
+
+def _require_any_model(filenames, label):
+    selected = _first_present(filenames)
+    if selected is None and os.environ.get("MIRRORVIDGEN_SKIP_MODEL_PREFLIGHT") != "1":
+        raise CapabilityUnavailable(
+            f"Required {label} model files are missing: " + ", ".join(filenames)
+        )
+    return selected or filenames[0]
 
 
 def _require_models(filenames):
@@ -476,8 +507,8 @@ def build_ltx25_ingredients(job_input):
         raise ValueError("Ingredients / Reference → Video requires an uploaded image reference")
     if len(references) > 1 and not job_input.get("allow_multiple_references"):
         raise ValueError("The official Ingredients workflow accepts one reference sheet per generation")
+    ingredients_lora = _require_any_model(INGREDIENTS_LORA_FILENAMES, "Ingredients / identity")
     _require_models([
-        "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors",
         "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
         "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
         "ltx-2.5-video-vae-bf16.safetensors",
@@ -487,7 +518,7 @@ def build_ltx25_ingredients(job_input):
     _set_prompt_nodes(workflow, prompt, negative)
     _set_common_generation(workflow, fps, frames, width, height, seed, "mirrorvidgen_ingredients")
     _set_duration_expressions(workflow, fps, duration)
-    _set_models(workflow, "ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors")
+    _set_models(workflow, ingredients_lora)
     for _, node in iter_nodes(workflow, "LoadImage"):
         node.setdefault("inputs", {})["image"] = references[0]
     _set_resize_dimensions(workflow, width, height, (":5014:4990",))
@@ -509,6 +540,7 @@ def build_ltx25_ingredients(job_input):
         "output_height": height * 2,
         "seed": seed,
         "reference_image_name": references[0],
+        "ingredients_lora": ingredients_lora,
     }
 
 
@@ -710,11 +742,21 @@ def worker_capabilities():
     ]
     union_lora = "ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
     union_ready = workflow_ready("union_control") and all(_model_present(name) for name in core + [union_lora])
+    ingredients_ready = (
+        workflow_ready("ingredients")
+        and all(_model_present(name) for name in core)
+        and _first_present(INGREDIENTS_LORA_FILENAMES) is not None
+    )
+    deblur_ready = (
+        workflow_ready("continuation")
+        and all(_model_present(name) for name in core)
+        and _first_present(DEBLUR_LORA_FILENAMES) is not None
+    )
     return {
         "text_to_video": True,
         "image_to_video": True,
         "first_frame_to_video": True,
-        "ingredients": workflow_ready("ingredients") and all(_model_present(name) for name in core + ["ltx-2.3-22b-ic-lora-ingredients-0.9.safetensors"]),
+        "ingredients": ingredients_ready,
         "first_last": workflow_ready("first_last") and all(_model_present(name) for name in core),
         "motion_track": workflow_ready("motion_track") and all(_model_present(name) for name in core + ["ltx-2.3-22b-ic-lora-motion-track-control-ref0.5.safetensors"]),
         "pose": union_ready and all(_model_present(name) for name in ["yolox_l.onnx", "dw-ll_ucoco_384_bs5.torchscript.pt"]),
@@ -722,10 +764,10 @@ def worker_capabilities():
         "depth": union_ready and _model_present("video_depth_anything_vits.pth"),
         # Director uses the same real V2V continuation graph between ordered
         # segments; the handler owns the chain and stitches one result.
-        "director": workflow_ready("continuation") and all(_model_present(name) for name in core + ["ltx-2.3-22b-ic-lora-deblur-0.9.safetensors"]),
-        "director30": workflow_ready("continuation") and all(_model_present(name) for name in core + ["ltx-2.3-22b-ic-lora-deblur-0.9.safetensors"]),
-        "continue": workflow_ready("continuation") and all(_model_present(name) for name in core + ["ltx-2.3-22b-ic-lora-deblur-0.9.safetensors"]),
-        "extend": workflow_ready("continuation") and all(_model_present(name) for name in core + ["ltx-2.3-22b-ic-lora-deblur-0.9.safetensors"]),
+        "director": deblur_ready,
+        "director30": deblur_ready,
+        "continue": deblur_ready,
+        "extend": deblur_ready,
     }
 
 
@@ -765,12 +807,12 @@ def _director_segments(job_input):
 def build_ltx25_director(job_input):
     """Preflight/build the first real segment of a chained Director job."""
     segments = _director_segments(job_input)
+    _require_any_model(DEBLUR_LORA_FILENAMES, "V2V continuation")
     _require_models([
         "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
         "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
         "ltx-2.5-video-vae-bf16.safetensors",
         "ltx-2.5-audio-vae-bf16.safetensors",
-        "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
     ])
     _workflow_path("continuation")
     first_input = copy.deepcopy(job_input)
@@ -856,17 +898,17 @@ def build_ltx25_continuation(job_input):
     if len(follow_on) > 12000:
         raise ValueError("input.follow_on_prompt is too long (max 12000 characters)")
     negative = str(job_input.get("negative_prompt") or DEFAULT_NEGATIVE_PROMPT).strip()
+    deblur_lora = _require_any_model(DEBLUR_LORA_FILENAMES, "V2V continuation")
     _require_models([
         "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
         "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
         "ltx-2.5-video-vae-bf16.safetensors",
         "ltx-2.5-audio-vae-bf16.safetensors",
-        "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors",
     ])
     workflow = _prepare_official("continuation")
     _set_prompt_nodes(workflow, follow_on, negative)
     _set_common_generation(workflow, fps, total_frames, width, height, int(job_input.get("seed", 42)), "mirrorvidgen_continuation")
-    _set_models(workflow, "ltx-2.3-22b-ic-lora-deblur-0.9.safetensors")
+    _set_models(workflow, deblur_lora)
     for _, node in iter_nodes(workflow, "LoadVideo"):
         node.setdefault("inputs", {})["video"] = source_name
     # V2V dimensions/fps normally come from the guide. The handler prepares
@@ -905,4 +947,5 @@ def build_ltx25_continuation(job_input):
         "seed": int(job_input.get("seed", 42)),
         "source_video_name": source_name,
         "follow_on_prompt": follow_on,
+        "deblur_lora": deblur_lora,
     }
