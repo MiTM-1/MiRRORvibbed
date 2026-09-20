@@ -803,6 +803,11 @@ def worker_capabilities():
         and _first_present(DEBLUR_LORA_FILENAMES) is not None
     )
     return {
+        # Compatibility marker consumed by the Site. Older images reported
+        # file-level capabilities but could still queue an incomplete
+        # compiled graph; only this worker contract runs the same required
+        # input validation before preflight and paid queueing.
+        "workflow_validation": True,
         "text_to_video": True,
         "image_to_video": True,
         "first_frame_to_video": True,
