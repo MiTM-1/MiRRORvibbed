@@ -9,7 +9,7 @@ RUN apt-get update \
 RUN rm -rf /comfyui/custom_nodes/ComfyUI-LTXVideo \
     && git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git /comfyui/custom_nodes/ComfyUI-LTXVideo \
     && /opt/venv/bin/python -m pip install --no-cache-dir -r /comfyui/custom_nodes/ComfyUI-LTXVideo/requirements.txt \
-    && /opt/venv/bin/python -m pip install --no-cache-dir "transformers>=4.50.0,<5"
+    && /opt/venv/bin/python -m pip install --no-cache-dir "kornia==0.8.2" "transformers>=4.50.0,<5"
 
 COPY extra_model_paths.yaml /comfyui/extra_model_paths.yaml
 COPY handler.py /handler.py
