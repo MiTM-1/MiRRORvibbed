@@ -8,7 +8,7 @@ from pathlib import Path
 
 import requests
 
-from ltx25_workflow import build_ltx25_t2v
+from ltx25_workflow import build_ltx25_i2v, build_ltx25_t2v
 import runpod
 
 COMFY_HOST = os.environ.get("COMFY_HOST", "127.0.0.1:8188")
@@ -165,11 +165,15 @@ def handler(job):
             mode = str(job_input.get("mode") or "").strip().lower()
             if mode in {"ltx25_t2v", "mirror_motion_1"}:
                 workflow, generated_settings = build_ltx25_t2v(job_input)
+            elif mode in {"ltx25_i2v", "image_to_video", "first_frame_to_video"}:
+                workflow, generated_settings = build_ltx25_i2v(job_input)
             else:
                 return {
                     "error": (
                         "Provide input.workflow or set input.mode to "
-                        "'ltx25_t2v' / 'mirror_motion_1'"
+                        "a connected workflow: 'ltx25_t2v', 'mirror_motion_1', "
+                        "'ltx25_i2v', 'image_to_video', or 'first_frame_to_video'. "
+                        "Unsupported modes never fall back to Text → Video."
                     )
                 }
 
