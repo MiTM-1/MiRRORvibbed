@@ -13,6 +13,8 @@ RUN rm -rf /comfyui/custom_nodes/ComfyUI-LTXVideo \
 
 COPY extra_model_paths.yaml /comfyui/extra_model_paths.yaml
 COPY handler.py /handler.py
+COPY ltx25_workflow.py /ltx25_workflow.py
+COPY tests/ltx25-t2v-smoke-request.json /ltx25-t2v-template.json
 
 ENV NETWORK_VOLUME_DEBUG=false
 ENV MIRRORVIDGEN_POLL_INTERVAL=1

@@ -7,6 +7,8 @@ import traceback
 from pathlib import Path
 
 import requests
+
+from ltx25_workflow import build_ltx25_t2v
 import runpod
 
 COMFY_HOST = os.environ.get("COMFY_HOST", "127.0.0.1:8188")
@@ -136,8 +138,19 @@ def handler(job):
     try:
         job_input = job.get("input") or {}
         workflow = job_input.get("workflow")
+        generated_settings = None
+
         if not isinstance(workflow, dict):
-            return {"error": "Missing or invalid input.workflow"}
+            mode = str(job_input.get("mode") or "").strip().lower()
+            if mode in {"ltx25_t2v", "mirror_motion_1"}:
+                workflow, generated_settings = build_ltx25_t2v(job_input)
+            else:
+                return {
+                    "error": (
+                        "Provide input.workflow or set input.mode to "
+                        "'ltx25_t2v' / 'mirror_motion_1'"
+                    )
+                }
 
         wait_for_comfy()
 
@@ -212,11 +225,14 @@ def handler(job):
                         "bytes": len(blob),
                     })
 
-        return {
+        response = {
             "status": "success",
             "prompt_id": prompt_id,
             "outputs": results,
         }
+        if generated_settings is not None:
+            response["settings"] = generated_settings
+        return response
 
     except Exception as e:
         traceback.print_exc()

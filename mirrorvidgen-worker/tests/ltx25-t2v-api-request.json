@@ -1,0 +1,12 @@
+{
+  "input": {
+    "mode": "mirror_motion_1",
+    "prompt": "Cinematic close-up of a glossy red glass sphere resting on a black reflective table. The sphere slowly rotates while soft studio lights glide across its surface. Photorealistic materials, subtle reflections, controlled camera, no text.",
+    "negative_prompt": "cartoon, illustration, video game, low quality, distorted, text, watermark",
+    "duration_seconds": 2,
+    "fps": 24,
+    "aspect_ratio": "16:9",
+    "quality": "smoke",
+    "seed": 42
+  }
+}
