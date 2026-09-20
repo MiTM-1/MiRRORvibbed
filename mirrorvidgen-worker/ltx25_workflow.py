@@ -10,28 +10,30 @@ DEFAULT_NEGATIVE_PROMPT = (
 
 # Stage-1 dimensions. The latent spatial upscaler produces 2x output.
 # Every stage-1 dimension is divisible by 32, as required by LTX-2.5.
-STAGE1_PRESETS = {
-    "smoke": {
-        "16:9": (320, 192),
-        "9:16": (192, 320),
-        "1:1": (256, 256),
-    },
-    "480p": {
-        "16:9": (448, 256),
-        "9:16": (256, 448),
-        "1:1": (256, 256),
-    },
-    "720p": {
-        "16:9": (640, 352),
-        "9:16": (352, 640),
-        "1:1": (352, 352),
-    },
-    "1080p": {
-        "16:9": (960, 544),
-        "9:16": (544, 960),
-        "1:1": (544, 544),
-    },
+QUALITY_STAGE1_AREA = {
+    "smoke": 320 * 192,
+    "480p": 448 * 256,
+    "720p": 640 * 352,
+    "1080p": 960 * 544,
 }
+SUPPORTED_ASPECTS = {"1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"}
+
+
+def _snap32(value):
+    return max(32, int(round(value / 32.0)) * 32)
+
+
+def _stage1_dimensions(quality, aspect_ratio):
+    if quality not in QUALITY_STAGE1_AREA:
+        raise ValueError("input.quality must be one of: smoke, 480p, 720p, 1080p")
+    if aspect_ratio not in SUPPORTED_ASPECTS:
+        raise ValueError("input.aspect_ratio is unsupported")
+    left, right = (int(part) for part in aspect_ratio.split(":"))
+    ratio = left / right
+    area = QUALITY_STAGE1_AREA[quality]
+    width = _snap32((area * ratio) ** 0.5)
+    height = _snap32((area / ratio) ** 0.5)
+    return width, height
 
 
 def _snap_frames(seconds, fps):
@@ -94,7 +96,7 @@ def _inject_i2v_reference(workflow, image_name, strength):
 
 
 
-def build_ltx25_t2v(job_input):
+def build_ltx25_t2v(job_input, require_reference=False):
     prompt = str(job_input.get("prompt") or "").strip()
     if not prompt:
         raise ValueError("input.prompt is required for ltx25_t2v")
@@ -117,19 +119,17 @@ def build_ltx25_t2v(job_input):
 
     aspect_ratio = str(job_input.get("aspect_ratio", "16:9"))
     quality = str(job_input.get("quality", "smoke"))
-    if quality not in STAGE1_PRESETS:
-        raise ValueError("input.quality must be one of: smoke, 480p, 720p, 1080p")
-    if aspect_ratio not in STAGE1_PRESETS[quality]:
-        raise ValueError("input.aspect_ratio must be one of: 16:9, 9:16, 1:1")
 
     seed = int(job_input.get("seed", 42))
     if seed < 0 or seed > 0x7FFFFFFFFFFFFFFF:
         raise ValueError("input.seed is outside the supported range")
 
     frames = _snap_frames(duration_seconds, fps)
-    width, height = STAGE1_PRESETS[quality][aspect_ratio]
+    width, height = _stage1_dimensions(quality, aspect_ratio)
 
     reference_image_name = _primary_reference_name(job_input)
+    if require_reference and not reference_image_name:
+        raise ValueError("Image → Video requires one uploaded conditioning image")
     reference_strength = float(job_input.get("reference_strength", 0.85))
     if reference_strength < 0.0 or reference_strength > 1.0:
         raise ValueError("input.reference_strength must be between 0 and 1")
@@ -181,3 +181,8 @@ def build_ltx25_t2v(job_input):
         "reference_strength": reference_strength if reference_image_name else None,
     }
     return workflow, settings
+
+
+def build_ltx25_i2v(job_input):
+    """Explicit first-frame Image → Video route. Never falls back to T2V."""
+    return build_ltx25_t2v(job_input, require_reference=True)
