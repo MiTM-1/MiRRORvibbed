@@ -136,7 +136,28 @@ def persist_large_video(job_id, filename, blob):
 
 def handler(job):
     try:
-        job_input = job.get("input") or {}
+        job_input = dict(job.get("input") or {})
+
+        normalized_images = []
+        for image in job_input.get("images") or []:
+            if not isinstance(image, dict):
+                continue
+            item = dict(image)
+            raw_name = str(item.get("name") or "reference.png")
+            item["name"] = Path(raw_name).name or "reference.png"
+            normalized_images.append(item)
+        job_input["images"] = normalized_images
+
+        normalized_assets = []
+        for asset in job_input.get("assets") or []:
+            if not isinstance(asset, dict):
+                continue
+            item = dict(asset)
+            raw_name = str(item.get("name") or "asset")
+            item["name"] = Path(raw_name).name or "asset"
+            normalized_assets.append(item)
+        job_input["assets"] = normalized_assets
+
         workflow = job_input.get("workflow")
         generated_settings = None
 
@@ -155,6 +176,8 @@ def handler(job):
         wait_for_comfy()
 
         for image in job_input.get("images") or []:
+            if not image.get("image"):
+                raise ValueError("Reference image data is missing")
             upload_image(image["name"], image["image"])
 
         for asset in job_input.get("assets") or []:
