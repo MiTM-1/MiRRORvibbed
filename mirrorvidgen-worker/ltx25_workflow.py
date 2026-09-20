@@ -40,6 +40,59 @@ def _snap_frames(seconds, fps):
         return requested
     return ((requested - 1 + 7) // 8) * 8 + 1
 
+def _primary_reference_name(job_input):
+    explicit = str(job_input.get("reference_image_name") or "").strip()
+    if explicit:
+        return Path(explicit).name
+
+    for image in job_input.get("images") or []:
+        if isinstance(image, dict):
+            name = str(image.get("name") or "").strip()
+            if name and image.get("image"):
+                return Path(name).name
+
+    image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif"}
+    for asset in job_input.get("assets") or []:
+        if isinstance(asset, dict):
+            name = str(asset.get("name") or "").strip()
+            if name and asset.get("url") and Path(name).suffix.lower() in image_exts:
+                return Path(name).name
+
+    return None
+
+
+def _inject_i2v_reference(workflow, image_name, strength):
+    workflow["450"] = {
+        "inputs": {"image": image_name},
+        "class_type": "LoadImage",
+        "_meta": {"title": "Load Reference Image"},
+    }
+    workflow["451"] = {
+        "inputs": {
+            "vae": ["440", 0],
+            "image": ["450", 0],
+            "latent": ["434", 0],
+            "strength": strength,
+            "bypass": False,
+        },
+        "class_type": "LTXVImgToVideoConditionOnly",
+        "_meta": {"title": "Reference Conditioning — Stage 1"},
+    }
+    workflow["452"] = {
+        "inputs": {
+            "vae": ["440", 0],
+            "image": ["450", 0],
+            "latent": ["416", 0],
+            "strength": strength,
+            "bypass": False,
+        },
+        "class_type": "LTXVImgToVideoConditionOnly",
+        "_meta": {"title": "Reference Conditioning — Stage 2"},
+    }
+    workflow["431"]["inputs"]["video_latent"] = ["451", 0]
+    workflow["414"]["inputs"]["video_latent"] = ["452", 0]
+
+
 
 def build_ltx25_t2v(job_input):
     prompt = str(job_input.get("prompt") or "").strip()
@@ -76,8 +129,16 @@ def build_ltx25_t2v(job_input):
     frames = _snap_frames(duration_seconds, fps)
     width, height = STAGE1_PRESETS[quality][aspect_ratio]
 
+    reference_image_name = _primary_reference_name(job_input)
+    reference_strength = float(job_input.get("reference_strength", 0.85))
+    if reference_strength < 0.0 or reference_strength > 1.0:
+        raise ValueError("input.reference_strength must be between 0 and 1")
+
     template = json.loads(TEMPLATE_PATH.read_text())
     workflow = copy.deepcopy(template["input"]["workflow"])
+
+    if reference_image_name:
+        _inject_i2v_reference(workflow, reference_image_name, reference_strength)
 
     workflow["432"]["inputs"]["text"] = prompt
     workflow["433"]["inputs"]["text"] = negative_prompt
@@ -114,5 +175,9 @@ def build_ltx25_t2v(job_input):
         "output_width": width * 2,
         "output_height": height * 2,
         "seed": seed,
+        "reference_conditioning": bool(reference_image_name),
+        "reference_mode": "i2v_first_frame" if reference_image_name else "none",
+        "reference_image_name": reference_image_name,
+        "reference_strength": reference_strength if reference_image_name else None,
     }
     return workflow, settings
