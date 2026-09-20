@@ -20,6 +20,7 @@ from ltx25_workflow import (
     build_ltx25_motion_track,
     build_ltx25_t2v,
     build_ltx25_union_control,
+    validate_workflow_inputs,
     worker_capabilities,
 )
 import runpod
@@ -412,6 +413,9 @@ def run_director(job, job_input):
     wait_for_comfy()
     materialize_assets(job_input)
     first_workflow, director_settings = build_ltx25_director(job_input)
+    # Validate the first graph before occupying the single worker with a
+    # paid Director chain. Later segments are checked before their queue call.
+    validate_workflow_inputs(first_workflow, label="Director first segment")
     first_prompt_id = queue_workflow(first_workflow)
     first_history = wait_for_history(first_prompt_id)
     _, first_blob = first_video_from_history(first_history)
@@ -433,6 +437,10 @@ def run_director(job, job_input):
             "continuation_context_seconds": float(job_input.get("continuation_context_seconds", 2)),
         })
         continuation_workflow, continuation_settings = build_ltx25_continuation(continuation_input)
+        validate_workflow_inputs(
+            continuation_workflow,
+            label=f"Director segment {index + 1}",
+        )
         tail_name = normalize_continuation_tail(current_name, continuation_settings, f"{job_token}_{index}")
         for _, node in continuation_workflow.items():
             if node.get("class_type") == "LoadVideo":
@@ -541,6 +549,7 @@ def handler(job):
                 # not start ComfyUI or queue a paid generation.
                 try:
                     workflow, generated_settings = _build_mode(mode, job_input)
+                    validate_workflow_inputs(workflow)
                     if mode in {"continue_video", "extend_video"}:
                         source_name = generated_settings.get("source_video_name")
                         source_path = materialize_source_only(job_input, source_name)
@@ -569,11 +578,15 @@ def handler(job):
                     }
             try:
                 workflow, generated_settings = _build_mode(mode, job_input)
+                validate_workflow_inputs(workflow)
             except CapabilityUnavailable as error:
                 return {"error": str(error), "error_type": "capability_unavailable"}
             except ValueError as error:
                 return {"error": str(error), "error_type": "invalid_input"}
 
+        # A caller-supplied prompt map (kept for backwards compatibility)
+        # receives the same fail-closed validation as server-built graphs.
+        validate_workflow_inputs(workflow)
         wait_for_comfy()
 
         materialize_assets(job_input)

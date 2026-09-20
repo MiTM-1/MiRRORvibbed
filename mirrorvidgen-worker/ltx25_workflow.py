@@ -244,6 +244,56 @@ class CapabilityUnavailable(RuntimeError):
     """A deliberate preflight lock, never a fallback to another workflow."""
 
 
+# ComfyUI reports a rather opaque ``prompt_outputs_failed_validation`` error
+# when a compiled subgraph contains a loader whose widget value was not
+# serialised into the API prompt.  That used to let an Ingredients request
+# reach the paid queue before failing at ``r:5004:5602`` (the nested
+# ``UNETLoader``).  Keep this contract small and explicit: these are the
+# inputs that every official LTX graph must provide before it is queueable.
+# Optional guide inputs (for example the Union Control opening image) are
+# validated by their mode-specific builders and are intentionally not listed
+# here.
+_REQUIRED_WORKFLOW_INPUTS = {
+    "UNETLoader": ("unet_name",),
+    "VAELoader": ("vae_name",),
+    "CLIPLoader": ("clip_name",),
+    "LTXICLoRALoaderModelOnly": ("model", "lora_name"),
+    "EmptyLTXVLatentVideo": ("width", "height", "length"),
+    "LTXVConditioning": ("frame_rate",),
+    "LTXVEmptyLatentAudio": ("frames_number", "frame_rate"),
+    "RandomNoise": ("noise_seed",),
+    "SaveVideo": ("filename_prefix",),
+}
+
+
+def validate_workflow_inputs(workflow, *, label="official LTX workflow"):
+    """Fail closed if a compiled graph has a missing required input.
+
+    This runs for both no-GPU preflight and the paid queue path.  It is
+    deliberately value-based (``None``/empty strings/lists only) so linked
+    ComfyUI inputs such as ``["r:5004:5602", 0]`` remain valid.
+    """
+    missing = []
+    for node_id, node in iter_nodes(workflow):
+        class_type = str(node.get("class_type") or "")
+        required = _REQUIRED_WORKFLOW_INPUTS.get(class_type, ())
+        if not required:
+            continue
+        inputs = node.get("inputs") or {}
+        for name in required:
+            value = inputs.get(name)
+            if value is None or value == "" or value == []:
+                missing.append(f"{node_id} {class_type}.{name}")
+    if missing:
+        preview = ", ".join(missing[:8])
+        suffix = "" if len(missing) <= 8 else f" (+{len(missing) - 8} more)"
+        raise CapabilityUnavailable(
+            f"{label} is missing required inputs: {preview}{suffix}. "
+            "The request was not queued."
+        )
+    return True
+
+
 def _workflow_path(kind):
     filename = WORKFLOW_FILES[kind]
     for directory in WORKFLOW_DIRS:
