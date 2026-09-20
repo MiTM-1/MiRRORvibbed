@@ -1,0 +1,423 @@
+{
+  "input": {
+    "workflow": {
+      "413": {
+        "inputs": {
+          "images": [
+            "424",
+            0
+          ],
+          "audio": [
+            "417",
+            0
+          ],
+          "fps": 24,
+          "bit_depth": 8,
+          "color_space": "sRGB"
+        },
+        "class_type": "CreateVideo",
+        "_meta": {
+          "title": "Create Video"
+        }
+      },
+      "414": {
+        "inputs": {
+          "video_latent": [
+            "416",
+            0
+          ],
+          "audio_latent": [
+            "422",
+            1
+          ]
+        },
+        "class_type": "LTXVConcatAVLatent",
+        "_meta": {
+          "title": "Concat AV Latent"
+        }
+      },
+      "415": {
+        "inputs": {
+          "sigmas": "0.85, 0.7250, 0.4219, 0.0"
+        },
+        "class_type": "ManualSigmas",
+        "_meta": {
+          "title": "Stage 2 Sigmas"
+        }
+      },
+      "416": {
+        "inputs": {
+          "samples": [
+            "422",
+            0
+          ],
+          "upscale_model": [
+            "438",
+            0
+          ],
+          "vae": [
+            "440",
+            0
+          ]
+        },
+        "class_type": "LTXVLatentUpsampler",
+        "_meta": {
+          "title": "Spatial x2 Upscale"
+        }
+      },
+      "417": {
+        "inputs": {
+          "samples": [
+            "423",
+            1
+          ],
+          "audio_vae": [
+            "441",
+            0
+          ]
+        },
+        "class_type": "LTXVAudioVAEDecode",
+        "_meta": {
+          "title": "Decode Audio"
+        }
+      },
+      "418": {
+        "inputs": {
+          "sampler_name": "euler_ancestral"
+        },
+        "class_type": "KSamplerSelect",
+        "_meta": {
+          "title": "Stage 2 Sampler"
+        }
+      },
+      "419": {
+        "inputs": {
+          "model": [
+            "439",
+            0
+          ],
+          "positive": [
+            "430",
+            0
+          ],
+          "negative": [
+            "430",
+            1
+          ],
+          "video_cfg": 1,
+          "audio_cfg": 1
+        },
+        "class_type": "LTXVDualCFGGuider",
+        "_meta": {
+          "title": "Stage 2 Guider"
+        }
+      },
+      "420": {
+        "inputs": {
+          "noise": [
+            "421",
+            0
+          ],
+          "guider": [
+            "419",
+            0
+          ],
+          "sampler": [
+            "418",
+            0
+          ],
+          "sigmas": [
+            "415",
+            0
+          ],
+          "latent_image": [
+            "414",
+            0
+          ]
+        },
+        "class_type": "SamplerCustomAdvanced",
+        "_meta": {
+          "title": "Stage 2 Sample"
+        }
+      },
+      "421": {
+        "inputs": {
+          "noise_seed": 43
+        },
+        "class_type": "RandomNoise",
+        "_meta": {
+          "title": "Stage 2 Noise"
+        }
+      },
+      "422": {
+        "inputs": {
+          "av_latent": [
+            "425",
+            0
+          ]
+        },
+        "class_type": "LTXVSeparateAVLatent",
+        "_meta": {
+          "title": "Separate Stage 1 AV"
+        }
+      },
+      "423": {
+        "inputs": {
+          "av_latent": [
+            "420",
+            0
+          ]
+        },
+        "class_type": "LTXVSeparateAVLatent",
+        "_meta": {
+          "title": "Separate Final AV"
+        }
+      },
+      "424": {
+        "inputs": {
+          "samples": [
+            "423",
+            0
+          ],
+          "vae": [
+            "440",
+            0
+          ],
+          "tile_size": 512,
+          "overlap": 64,
+          "temporal_size": 64,
+          "temporal_overlap": 16
+        },
+        "class_type": "VAEDecodeTiled",
+        "_meta": {
+          "title": "Decode Video"
+        }
+      },
+      "425": {
+        "inputs": {
+          "noise": [
+            "429",
+            0
+          ],
+          "guider": [
+            "427",
+            0
+          ],
+          "sampler": [
+            "428",
+            0
+          ],
+          "sigmas": [
+            "426",
+            0
+          ],
+          "latent_image": [
+            "431",
+            0
+          ]
+        },
+        "class_type": "SamplerCustomAdvanced",
+        "_meta": {
+          "title": "Stage 1 Sample"
+        }
+      },
+      "426": {
+        "inputs": {
+          "sigmas": "1.0, 0.99375, 0.9875, 0.98125, 0.975, 0.909375, 0.725, 0.421875, 0.0"
+        },
+        "class_type": "ManualSigmas",
+        "_meta": {
+          "title": "Stage 1 Sigmas"
+        }
+      },
+      "427": {
+        "inputs": {
+          "model": [
+            "439",
+            0
+          ],
+          "positive": [
+            "430",
+            0
+          ],
+          "negative": [
+            "430",
+            1
+          ],
+          "video_cfg": 1,
+          "audio_cfg": 1
+        },
+        "class_type": "LTXVDualCFGGuider",
+        "_meta": {
+          "title": "Stage 1 Guider"
+        }
+      },
+      "428": {
+        "inputs": {
+          "sampler_name": "euler_ancestral"
+        },
+        "class_type": "KSamplerSelect",
+        "_meta": {
+          "title": "Stage 1 Sampler"
+        }
+      },
+      "429": {
+        "inputs": {
+          "noise_seed": 42
+        },
+        "class_type": "RandomNoise",
+        "_meta": {
+          "title": "Stage 1 Noise"
+        }
+      },
+      "430": {
+        "inputs": {
+          "positive": [
+            "432",
+            0
+          ],
+          "negative": [
+            "433",
+            0
+          ],
+          "frame_rate": 24
+        },
+        "class_type": "LTXVConditioning",
+        "_meta": {
+          "title": "LTX Conditioning"
+        }
+      },
+      "431": {
+        "inputs": {
+          "video_latent": [
+            "434",
+            0
+          ],
+          "audio_latent": [
+            "435",
+            0
+          ]
+        },
+        "class_type": "LTXVConcatAVLatent",
+        "_meta": {
+          "title": "Initial AV Latent"
+        }
+      },
+      "432": {
+        "inputs": {
+          "clip": [
+            "442",
+            0
+          ],
+          "text": "Cinematic close-up of a glossy red glass sphere resting on a black reflective table. The sphere slowly rotates while soft studio lights glide across its surface. Photorealistic materials, subtle reflections, controlled camera, no text."
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "Positive Prompt"
+        }
+      },
+      "433": {
+        "inputs": {
+          "clip": [
+            "442",
+            0
+          ],
+          "text": "cartoon, illustration, video game, low quality, distorted, text, watermark"
+        },
+        "class_type": "CLIPTextEncode",
+        "_meta": {
+          "title": "Negative Prompt"
+        }
+      },
+      "434": {
+        "inputs": {
+          "width": 320,
+          "height": 192,
+          "length": 49,
+          "batch_size": 1
+        },
+        "class_type": "EmptyLTXVLatentVideo",
+        "_meta": {
+          "title": "Low Resolution Video Latent"
+        }
+      },
+      "435": {
+        "inputs": {
+          "audio_vae": [
+            "441",
+            0
+          ],
+          "frames_number": 49,
+          "frame_rate": 24,
+          "batch_size": 1
+        },
+        "class_type": "LTXVEmptyLatentAudio",
+        "_meta": {
+          "title": "Audio Latent"
+        }
+      },
+      "438": {
+        "inputs": {
+          "model_name": "ltx-2.5-latent-spatial-upscaler-x2-bf16-1.0.safetensors"
+        },
+        "class_type": "LatentUpscaleModelLoader",
+        "_meta": {
+          "title": "Load Spatial Upscaler"
+        }
+      },
+      "439": {
+        "inputs": {
+          "unet_name": "ltx-2.5-22b-distilled-transformer-comfy-int8-convrot.safetensors",
+          "weight_dtype": "default"
+        },
+        "class_type": "UNETLoader",
+        "_meta": {
+          "title": "Load LTX-2.5 Transformer"
+        }
+      },
+      "440": {
+        "inputs": {
+          "vae_name": "ltx-2.5-video-vae-bf16.safetensors"
+        },
+        "class_type": "VAELoader",
+        "_meta": {
+          "title": "Load Video VAE"
+        }
+      },
+      "441": {
+        "inputs": {
+          "vae_name": "ltx-2.5-audio-vae-bf16.safetensors"
+        },
+        "class_type": "VAELoader",
+        "_meta": {
+          "title": "Load Audio VAE"
+        }
+      },
+      "442": {
+        "inputs": {
+          "clip_name": "gemma4-12b-with-proj-ltx-2.5-comfy-int8-convrot.safetensors",
+          "type": "ltxv",
+          "device": "default"
+        },
+        "class_type": "CLIPLoader",
+        "_meta": {
+          "title": "Load LTX-2.5 Text Encoder"
+        }
+      },
+      "999": {
+        "inputs": {
+          "video": [
+            "413",
+            0
+          ],
+          "filename_prefix": "mirrorvidgen_ltx25_smoke",
+          "format": "mp4"
+        },
+        "class_type": "SaveVideo",
+        "_meta": {
+          "title": "Save Video"
+        }
+      }
+    }
+  }
+}
