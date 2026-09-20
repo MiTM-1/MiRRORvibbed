@@ -108,6 +108,11 @@ hf_fetch 'Lightricks/LTX-2.3-22b-IC-LoRA-Union-Control' \
   'ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors' \
   "$MODELS/loras/ltx-2.3-22b-ic-lora-union-control-ref0.5.safetensors"
 
+echo '[3b/6] V2V / continuation deblur control'
+hf_fetch 'Lightricks/LTX-2.5-22b-IC-LoRA-Deblur' \
+  'ltx-2.3-22b-ic-lora-deblur-0.9.safetensors' \
+  "$MODELS/loras/ltx-2.3-22b-ic-lora-deblur-0.9.safetensors"
+
 echo '[4/6] Temporal x2 latent upscaler'
 hf_fetch 'Lightricks/LTX-2.5' \
   'latent_upscale_models/ltx-2.5-latent-temporal-upscaler-x2-bf16-1.0.safetensors' \
@@ -129,6 +134,7 @@ curl -fL --retry 4 -o "$WORKFLOWS/video_ltx2_5_flf2v.json" 'https://raw.githubus
 curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_ICLoRA_Ingredients_Single_Stage_Distilled.json'
 curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_ICLoRA_Motion_Track_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_ICLoRA_Motion_Track_Distilled.json'
 curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_ICLoRA_Union_Control_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_ICLoRA_Union_Control_Distilled.json'
+curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_V2V_ICLoRA_Single_Stage_Distilled.json'
 curl -fL --retry 4 -o "$WORKFLOWS/LTX-2.5_T2V_I2V_Two_Stage_Distilled.json" 'https://raw.githubusercontent.com/Lightricks/ComfyUI-LTXVideo/master/example_workflows/2.5/LTX-2.5_T2V_I2V_Two_Stage_Distilled.json'
 
 echo 'Staging official LTXVideo custom nodes...'
@@ -188,6 +194,7 @@ Installed:
 - Official Ingredients workflow
 - Official Motion Track workflow
 - Official Union Control workflow
+- Official V2V IC-LoRA continuation workflow
 - Official two-stage T2V/I2V workflow
 - Official ComfyUI-LTXVideo custom nodes staged
 - MiRRORdirector orchestration manifest
