@@ -26,6 +26,34 @@ VIRTUAL_TYPES = {
     "PrimitiveBoolean",
 }
 
+# UI inputs are sockets, not a widget schema. ComfyUI omits unconverted
+# widgets from that array, but retains them in widgets_values in node order.
+# None marks frontend-only controls (for example seed randomisation).
+WIDGET_ORDER = {
+    "UNETLoader": ("unet_name", "weight_dtype"),
+    "CLIPLoader": ("clip_name", "type", "device"),
+    "VAELoader": ("vae_name",),
+    "ComfyMathExpression": ("expression",),
+    "ManualSigmas": ("sigmas",),
+    "EmptyLTXVLatentVideo": ("width", "height", "length", "batch_size"),
+    "LTXVEmptyLatentAudio": ("frames_number", "frame_rate", "batch_size"),
+    "VAEDecodeTiled": ("tile_size", "overlap", "temporal_size", "temporal_overlap"),
+    "KSamplerSelect": ("sampler_name",),
+    "RandomNoise": ("noise_seed", None),
+    "CLIPTextEncode": ("text",),
+    "CFGGuider": ("cfg",),
+    "LTXVConditioning": ("frame_rate",),
+    "LTXICLoRALoaderModelOnly": ("lora_name", "strength_model"),
+    "RepeatImageBatch": ("amount",),
+    "CreateVideo": ("fps", "bit_depth"),
+    "SaveVideo": ("filename_prefix", "format", "codec"),
+    "LTXVImgToVideoInplace": ("strength", "bypass"),
+    "LTXVDrawTracks": ("tracks", "width", "height"),
+    "LTXFloatToInt": ("a",),
+    "LatentUpscaleModelLoader": ("model_name",),
+    "LTXAddVideoICLoRAGuide": ("frame_idx", "strength", "latent_downscale_factor", "crop", "use_tiled_encode", "tile_size", "tile_overlap"),
+}
+
 
 def _link(value: Any) -> Dict[str, Any]:
     """Normalise both legacy array links and current object links."""
@@ -64,6 +92,24 @@ class WorkflowCompiler:
     @staticmethod
     def _widget_values(node: Mapping[str, Any]) -> Dict[str, Any]:
         values = list(node.get("widgets_values") or [])
+        if node.get("type") == "ResizeImageMaskNode" and values:
+            branches = {
+                "scale dimensions": ("width", "height", "crop"),
+                "scale by": ("multiplier",),
+                "scale longer dimension": ("longer_size",),
+                "scale shorter dimension": ("shorter_size",),
+                "scale width": ("width",), "scale height": ("height",),
+                "scale total pixels": ("megapixels",),
+                "match size": ("crop",), "scale to multiple": ("multiple",),
+            }
+            branch = branches.get(values[0])
+            if branch is None or len(values) < len(branch) + 2:
+                raise ValueError("Unsupported or incomplete saved resize widget branch")
+            return {"resize_type": values[0], "scale_method": values[-1],
+                    **{f"resize_type.{name}": value for name, value in zip(branch, values[1:])}}
+        order = WIDGET_ORDER.get(str(node.get("type") or ""))
+        if order is not None:
+            return {name: value for name, value in zip(order, values) if name is not None}
         result: Dict[str, Any] = {}
         value_index = 0
         for input_item in node.get("inputs") or []:
@@ -211,7 +257,7 @@ class WorkflowCompiler:
             if node_type in self.subgraphs or _is_virtual(node):
                 continue
 
-            inputs: Dict[str, Any] = {}
+            inputs: Dict[str, Any] = dict(self._widget_values(node)) if node_type in WIDGET_ORDER or node_type == "ResizeImageMaskNode" else {}
             for input_item in node.get("inputs") or []:
                 name = str(input_item.get("name") or "")
                 if not name:
@@ -220,6 +266,7 @@ class WorkflowCompiler:
                 if link_id in links:
                     link = links[link_id]
                     value = resolve_source(link["origin_id"], link["origin_slot"])
+                    inputs.pop(name, None)
                     if value is not None:
                         inputs[name] = value
                     continue

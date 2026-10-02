@@ -254,13 +254,18 @@ class CapabilityUnavailable(RuntimeError):
 # validated by their mode-specific builders and are intentionally not listed
 # here.
 _REQUIRED_WORKFLOW_INPUTS = {
-    "UNETLoader": ("unet_name",),
+    "UNETLoader": ("unet_name", "weight_dtype"),
     "VAELoader": ("vae_name",),
-    "CLIPLoader": ("clip_name",),
+    "CLIPLoader": ("clip_name", "type"),
     "LTXICLoRALoaderModelOnly": ("model", "lora_name"),
-    "EmptyLTXVLatentVideo": ("width", "height", "length"),
+    "EmptyLTXVLatentVideo": ("width", "height", "length", "batch_size"),
     "LTXVConditioning": ("frame_rate",),
-    "LTXVEmptyLatentAudio": ("frames_number", "frame_rate"),
+    "LTXVEmptyLatentAudio": ("frames_number", "frame_rate", "batch_size"),
+    "ComfyMathExpression": ("expression",),
+    "ManualSigmas": ("sigmas",),
+    "VAEDecodeTiled": ("samples", "vae", "tile_size", "overlap", "temporal_size", "temporal_overlap"),
+    "ResizeImageMaskNode": ("input", "resize_type", "scale_method"),
+    "LTXAddVideoICLoRAGuide": ("positive", "negative", "vae", "latent", "image", "frame_idx", "strength", "latent_downscale_factor", "crop", "use_tiled_encode", "tile_size", "tile_overlap"),
     "RandomNoise": ("noise_seed",),
     "KSamplerSelect": ("sampler_name",),
     "SaveVideo": ("filename_prefix",),
@@ -506,7 +511,10 @@ def _set_resize_dimensions(workflow, width, height, node_suffixes):
         # ComfyUI's DynamicCombo serialises the active branch as dotted
         # fields in the API prompt.  Removing the old ``multiple`` branch is
         # important: otherwise the linked guide-video size silently wins.
-        inputs.pop("resize_type.multiple", None)
+        for key in list(inputs):
+            if key.startswith("resize_type."):
+                inputs.pop(key)
+        inputs["resize_type"] = "scale dimensions"
         inputs["resize_type.width"] = width
         inputs["resize_type.height"] = height
         inputs["resize_type.crop"] = "disabled"
@@ -739,10 +747,7 @@ def build_ltx25_first_last(job_input):
     for node_id, node in loaders:
         node.setdefault("inputs", {})["image"] = starts[0] if node_id.endswith(":31") else ends[0]
     # The official graph uses these stable node IDs for the two latent guides.
-    for suffix, image_name in ((":251:213", starts[0]), (":251:214", ends[0])):
-        node = next((n for node_id, n in workflow.items() if node_id.endswith(suffix)), None)
-        if node:
-            node.setdefault("inputs", {}).update({"resize_type.width": width, "resize_type.height": height})
+    _set_resize_dimensions(workflow, width, height, (":251:213", ":251:214"))
     for node_id, node in workflow.items():
         if node_id.endswith(":251:226") and node.get("class_type") == "ComfyMathExpression":
             node.setdefault("inputs", {}).update({"values.a": duration, "values.b": fps})
