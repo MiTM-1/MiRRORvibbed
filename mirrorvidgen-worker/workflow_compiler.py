@@ -147,7 +147,25 @@ class WorkflowCompiler:
                         parent_link["origin_id"], parent_link["origin_slot"]
                     )
                 elif input_name is not None:
-                    child_boundary[slot] = self._literal_widget(node, str(input_name))
+                    value = self._literal_widget(node, str(input_name))
+                    # ComfyUI subgraph exports can omit a promoted widget from
+                    # the parent inputs array while retaining its saved value
+                    # (Ingredients sampler_name is one such widget). Recover
+                    # it from the definition's ordered scalar boundary inputs,
+                    # never from a guessed sampler/default.
+                    if value is None:
+                        widget_names = [
+                            item.get("name") for item in child.get("inputs") or []
+                            if item.get("type") in {"INT", "FLOAT", "BOOLEAN", "STRING", "COMBO"}
+                            or any((parent.get("widget") or {}).get("name") == item.get("name")
+                                   for parent in node.get("inputs") or [])
+                        ]
+                        values = list(node.get("widgets_values") or [])
+                        if input_name in widget_names:
+                            index = widget_names.index(input_name)
+                            if index < len(values):
+                                value = values[index]
+                    child_boundary[slot] = value
             subgraph_outputs[child_id] = self._flatten(
                 child,
                 f"{prefix}:{child_id}",

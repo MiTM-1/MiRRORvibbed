@@ -262,6 +262,7 @@ _REQUIRED_WORKFLOW_INPUTS = {
     "LTXVConditioning": ("frame_rate",),
     "LTXVEmptyLatentAudio": ("frames_number", "frame_rate"),
     "RandomNoise": ("noise_seed",),
+    "KSamplerSelect": ("sampler_name",),
     "SaveVideo": ("filename_prefix",),
 }
 
