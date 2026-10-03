@@ -91,6 +91,86 @@ def h3_status():
     }
 
 
+def h3_install_diagnostics():
+    """Return a compact diagnostic from the newest retained FreeVideo setup run."""
+    runs_root = FREEVIDEO_HOME / "setup-runs"
+    if not runs_root.is_dir():
+        return {
+            "status": "h3_diagnostics",
+            "found": False,
+            "message": "No retained FreeVideo setup-runs directory was found.",
+            "h3": h3_status(),
+        }
+    runs = sorted(
+        (path for path in runs_root.iterdir() if path.is_dir()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not runs:
+        return {
+            "status": "h3_diagnostics",
+            "found": False,
+            "message": "No retained FreeVideo setup run was found.",
+            "h3": h3_status(),
+        }
+
+    run = runs[0]
+    status_path = run / "status.json"
+    status = {}
+    if status_path.is_file():
+        try:
+            status = json.loads(status_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            status = {}
+
+    failed_steps = []
+    steps = status.get("steps") if isinstance(status, dict) else None
+    if isinstance(steps, list):
+        for row in steps:
+            if not isinstance(row, dict) or row.get("status") != "failed":
+                continue
+            log_path = Path(str(row.get("log") or ""))
+            tail = ""
+            if log_path.is_file():
+                try:
+                    raw = log_path.read_text(encoding="utf-8", errors="replace")
+                    tail = raw[-8000:]
+                except OSError as error:
+                    tail = "Could not read log: " + repr(error)
+            failed_steps.append({
+                "label": row.get("label"),
+                "returncode": row.get("returncode"),
+                "error": row.get("error"),
+                "seconds": row.get("seconds"),
+                "log": str(log_path),
+                "log_tail": tail,
+            })
+
+    if not failed_steps:
+        # Fall back to the newest log files so diagnostics still work if setup
+        # stopped outside a normal child-command failure.
+        logs = sorted(run.glob("*.log"), key=lambda path: path.stat().st_mtime, reverse=True)
+        for log_path in logs[:3]:
+            try:
+                raw = log_path.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            failed_steps.append({
+                "label": log_path.stem,
+                "log": str(log_path),
+                "log_tail": raw[-6000:],
+            })
+
+    return {
+        "status": "h3_diagnostics",
+        "found": True,
+        "run": str(run),
+        "resource_guard": status.get("resource_guard") if isinstance(status, dict) else None,
+        "failed_steps": failed_steps[:4],
+        "h3": h3_status(),
+    }
+
+
 def h3_install(accept_model_license=False):
     """Install/prepare FreeVideo H3 on the persistent network volume.
 
