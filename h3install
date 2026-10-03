@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+FREEVIDEO_COMMIT="f7d117726a60567639dda7bba05ae353e58f7b97"
+ROOT="${FREEVIDEO_HOME:-/runpod-volume/freevideo-h3}"
+SOURCE="$ROOT/source"
+
+echo "============================================================"
+echo " MiRRORvidgen — FreeVideo / MiniMax H3 persistent installer"
+echo "============================================================"
+echo "Install root: $ROOT"
+echo "Source:       $SOURCE"
+echo
+
+if [ ! -d /runpod-volume ]; then
+  echo "ERROR: /runpod-volume is not mounted."
+  echo "Attach the MiRRORvidgen network volume before running this installer."
+  exit 1
+fi
+
+mkdir -p "$ROOT"
+
+if [ ! -d "$SOURCE/.git" ]; then
+  rm -rf "$SOURCE"
+  git clone https://github.com/FlashML-org/FreeVideo.git "$SOURCE"
+fi
+
+git -C "$SOURCE" fetch --quiet origin "$FREEVIDEO_COMMIT"
+git -C "$SOURCE" checkout --quiet --detach "$FREEVIDEO_COMMIT"
+chmod +x "$SOURCE/freevideo" "$SOURCE/setup.sh"
+
+echo "Pinned FreeVideo revision:"
+git -C "$SOURCE" rev-parse HEAD
+echo
+echo "Running the read-only installation plan..."
+"$SOURCE/freevideo" --root "$ROOT" setup --plan --json --plain
+
+echo
+if [ "${1:-}" != "--accept-model-license" ]; then
+  echo "No H3 model files have been installed."
+  echo "FreeVideo requires explicit MiniMax H3 model-license acceptance."
+  echo
+  echo "After reviewing the MiniMax H3 license, rerun this installer as:"
+  echo "  curl -Ls https://github.com/MiTM-1/MiRRORvibbed/raw/main/h3install | bash -s -- --accept-model-license"
+  exit 2
+fi
+
+echo
+echo "Explicit model-license acceptance flag received."
+echo "Preparing FreeVideo runtime and the compact H3 model cache on the persistent volume..."
+"$SOURCE/freevideo" --root "$ROOT" setup \
+  --plain \
+  --yes \
+  --accept-model-license \
+  --storage compact
+
+echo
+echo "Verifying FreeVideo/H3..."
+"$SOURCE/freevideo" --root "$ROOT" doctor --require-paths
+
+echo
+echo "============================================================"
+echo " MiRRORvidgen H3 runtime READY on persistent storage"
+echo "============================================================"
