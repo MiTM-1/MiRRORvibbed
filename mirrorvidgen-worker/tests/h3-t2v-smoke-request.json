@@ -1,0 +1,12 @@
+{
+  "input": {
+    "engine": "freevideo_h3",
+    "mode": "h3_t2v",
+    "prompt": "A cinematic close shot of sunlight moving across a polished chrome sphere on a dark studio table, realistic reflections, natural motion.",
+    "duration_seconds": 2,
+    "aspect_ratio": "16:9",
+    "quality": "smoke",
+    "fps": 24,
+    "seed": 42
+  }
+}
