@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-from freevideo_backend import H3Unavailable, h3_setup_plan, h3_status, run_h3_job
+from freevideo_backend import H3Unavailable, h3_install, h3_setup_plan, h3_status, run_h3_job
 
 from ltx25_workflow import (
     CapabilityUnavailable,
@@ -535,6 +535,13 @@ def handler(job):
         if action == "h3_setup_plan":
             try:
                 return {"status": "h3_setup_plan", "plan": h3_setup_plan(), "h3": h3_status()}
+            except H3Unavailable as error:
+                return {"error": str(error), "error_type": "capability_unavailable"}
+        if action == "h3_install":
+            try:
+                return h3_install(bool(job_input.get("accept_model_license")))
+            except ValueError as error:
+                return {"error": str(error), "error_type": "invalid_input"}
             except H3Unavailable as error:
                 return {"error": str(error), "error_type": "capability_unavailable"}
 
