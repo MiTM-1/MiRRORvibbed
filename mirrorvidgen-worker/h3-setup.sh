@@ -2,14 +2,20 @@
 set -euo pipefail
 
 ROOT="${FREEVIDEO_HOME:-/runpod-volume/freevideo-h3}"
-SOURCE="${FREEVIDEO_SOURCE:-/opt/freevideo}"
+BUNDLED_SOURCE="${FREEVIDEO_SOURCE:-/opt/freevideo}"
+SOURCE="$ROOT/source"
 
-if [ ! -x "$SOURCE/freevideo" ]; then
+if [ ! -x "$BUNDLED_SOURCE/freevideo" ]; then
   echo "ERROR: FreeVideo is not installed in this worker image."
   exit 1
 fi
 
 mkdir -p "$ROOT"
+if [ ! -x "$SOURCE/freevideo" ]; then
+  echo "Copying the pinned FreeVideo source to persistent storage..."
+  rm -rf "$SOURCE"
+  cp -a "$BUNDLED_SOURCE" "$SOURCE"
+fi
 
 echo "=================================================="
 echo " MiRRORvidgen — MiniMax H3 / FreeVideo setup"
