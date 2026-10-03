@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-from freevideo_backend import H3Unavailable, h3_generation_diagnostics, h3_gpu_check, h3_install, h3_install_diagnostics, h3_setup_plan, h3_status, run_h3_job
+from freevideo_backend import H3Unavailable, h3_generation_diagnostics, h3_gpu_check, h3_install, h3_install_diagnostics, h3_runtime_audit, h3_setup_plan, h3_status, run_h3_job
 
 from ltx25_workflow import (
     CapabilityUnavailable,
@@ -530,6 +530,14 @@ def handler(job):
             capabilities = dict(worker_capabilities())
             capabilities["freevideo_h3"] = h3_status()
             return {"status": "capabilities", "capabilities": capabilities}
+        if action == "backend_audit":
+            return {
+                "status": "backend_audit",
+                "ltx25": worker_capabilities(),
+                "h3": h3_runtime_audit(),
+            }
+        if action == "h3_runtime_audit":
+            return h3_runtime_audit()
         if action == "h3_status":
             return {"status": "h3_status", "h3": h3_status()}
         if action == "h3_setup_plan":
