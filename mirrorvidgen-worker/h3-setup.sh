@@ -53,6 +53,39 @@ elif "RunPod network volumes can preserve extracted files" not in text:
     raise SystemExit("Pinned FreeVideo bootstrap layout changed; refusing an unsafe patch")
 PY
 
+echo "Applying RunPod CUDA-toolchain executable compatibility fix..."
+/opt/venv/bin/python - "$SOURCE/freevideo_engine/bootstrap.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+needle = """            shutil.copytree(unpacked, toolkit, dirs_exist_ok=True, symlinks=True)
+        if not (toolkit / 'lib64').exists() and not (toolkit / 'lib64').is_symlink():
+"""
+replacement = """            shutil.copytree(unpacked, toolkit, dirs_exist_ok=True, symlinks=True)
+        if self.system != 'Windows':
+            # RunPod network volumes can lose executable mode bits on CUDA
+            # tools extracted from NVIDIA archives. Restore every helper in
+            # the executable directories before SageAttention invokes nvcc.
+            for executable_dir in (toolkit / 'bin', toolkit / 'nvvm' / 'bin'):
+                if executable_dir.is_dir():
+                    for executable in executable_dir.iterdir():
+                        if executable.is_file():
+                            executable.chmod(executable.stat().st_mode | 0o111)
+            for executable in (toolkit / 'bin' / 'nvcc', toolkit / 'nvvm' / 'bin' / 'cicc'):
+                if not executable.is_file():
+                    raise RuntimeError('Required CUDA build tool is missing: %s' % executable)
+                if not os.access(executable, os.X_OK):
+                    raise RuntimeError('CUDA build tool is not executable on the RunPod volume: %s' % executable)
+        if not (toolkit / 'lib64').exists() and not (toolkit / 'lib64').is_symlink():
+"""
+if needle in text:
+    path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+elif "RunPod network volumes can lose executable mode bits on CUDA" not in text:
+    raise SystemExit("Pinned FreeVideo CUDA toolkit layout changed; refusing an unsafe patch")
+PY
+
 echo "Running read-only hardware/model plan first..."
 "$SOURCE/freevideo" --root "$ROOT" setup --plan --json --plain
 
