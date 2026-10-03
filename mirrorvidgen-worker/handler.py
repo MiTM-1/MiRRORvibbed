@@ -10,6 +10,8 @@ from pathlib import Path
 
 import requests
 
+from freevideo_backend import H3Unavailable, h3_setup_plan, h3_status, run_h3_job
+
 from ltx25_workflow import (
     CapabilityUnavailable,
     build_ltx25_continuation,
@@ -525,11 +527,29 @@ def handler(job):
 
         action = str(job_input.get("action") or "").strip().lower()
         if action == "capabilities":
-            return {"status": "capabilities", "capabilities": worker_capabilities()}
+            capabilities = dict(worker_capabilities())
+            capabilities["freevideo_h3"] = h3_status()
+            return {"status": "capabilities", "capabilities": capabilities}
+        if action == "h3_status":
+            return {"status": "h3_status", "h3": h3_status()}
+        if action == "h3_setup_plan":
+            try:
+                return {"status": "h3_setup_plan", "plan": h3_setup_plan(), "h3": h3_status()}
+            except H3Unavailable as error:
+                return {"error": str(error), "error_type": "capability_unavailable"}
+
+        mode = str(job_input.get("mode") or "").strip().lower()
+        engine = str(job_input.get("engine") or job_input.get("model_engine") or "").strip().lower()
+        if engine in {"freevideo_h3", "h3", "minimax_h3", "minimax-h3"} or mode.startswith("h3_"):
+            try:
+                return run_h3_job(job, job_input)
+            except H3Unavailable as error:
+                return {"error": str(error), "error_type": "capability_unavailable"}
+            except ValueError as error:
+                return {"error": str(error), "error_type": "invalid_input"}
 
         workflow = job_input.get("workflow")
         generated_settings = None
-        mode = str(job_input.get("mode") or "").strip().lower()
 
         if (
             not isinstance(workflow, dict)
