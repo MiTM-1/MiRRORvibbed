@@ -77,11 +77,13 @@ def is_ref2va_request(job_input: dict[str, Any]) -> bool:
     workflow_name = str(workflow).strip().lower() if isinstance(workflow, str) else ""
     engine = str(job_input.get("engine") or job_input.get("model_engine") or "").strip().lower()
     explicit = str(job_input.get("h3_workflow") or job_input.get("model_workflow") or "").strip().lower()
-    if mode in REF_MODES or workflow_name == "ref2va" or explicit == "ref2va":
+    if workflow_name == "ref2va" or explicit == "ref2va" or mode in {"h3_reference", "ref2va"}:
         return True
-    return engine in {"mirrorromax-h3", "mirrorromax_h3"} and (
-        "reference" in mode or mode == "ref2va"
-    )
+    h3_engines = {
+        "mirrorromax-h3", "mirrorromax_h3",
+        "freevideo_h3", "h3", "minimax_h3", "minimax-h3",
+    }
+    return engine in h3_engines and mode in REF_MODES
 
 
 def _safe_token(value: Any) -> str:
