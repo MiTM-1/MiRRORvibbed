@@ -12,6 +12,15 @@ import requests
 
 from freevideo_backend import H3Unavailable, h3_generation_diagnostics, h3_gpu_check, h3_install, h3_install_diagnostics, h3_runtime_audit, h3_setup_plan, h3_status, run_h3_job
 from h3_ref2va_backend import h3_ref2va_install, h3_ref2va_install_plan, h3_ref2va_status
+from h3_ref2va_generation import (
+    Ref2VAUnavailable,
+    build_ref2va_workflow,
+    cleanup_ref2va_paths,
+    is_ref2va_request,
+    prepare_ref2va_references,
+    public_prepared_summary,
+    validate_ref2va_workflow,
+)
 
 from ltx25_workflow import (
     CapabilityUnavailable,
@@ -412,6 +421,7 @@ def h3_ref2va_schema_audit():
         "VAELoader",
         "LoadImage",
         "LoadVideo",
+        "GetVideoComponents",
         "LoadAudio",
         "RandomNoise",
         "KSamplerSelect",
@@ -523,6 +533,126 @@ def persist_large_video(job_id, filename, blob):
     target = folder / Path(filename).name
     target.write_bytes(blob)
     return str(target)
+
+
+
+def run_h3_ref2va_job(job, job_input, *, preflight_only=False):
+    """Validate and execute the isolated official ComfyUI H3 Ref2VA path."""
+    started = time.time()
+    prepared = None
+    prompt_id = None
+    print("[H3-REF2VA] starting preflight", flush=True)
+    try:
+        wait_for_comfy()
+        response = requests.get(f"http://{COMFY_HOST}/object_info", timeout=60)
+        response.raise_for_status()
+        object_info = response.json()
+        if not isinstance(object_info, dict):
+            object_info = {}
+
+        prepared = prepare_ref2va_references(job.get("id", "ref2va"), job_input)
+        workflow, settings = build_ref2va_workflow(job_input, prepared)
+        validate_ref2va_workflow(workflow, object_info=object_info)
+        validated = public_prepared_summary(prepared)
+        print(
+            "[H3-REF2VA] validated "
+            f"images={settings['reference_counts'].get('images', 0)} "
+            f"videos={settings['reference_counts'].get('videos', 0)} "
+            f"audio={settings['reference_counts'].get('audio', 0)} "
+            f"duration={settings['requested_duration_seconds']}s "
+            f"size={settings['width']}x{settings['height']}",
+            flush=True,
+        )
+
+        if preflight_only:
+            return {
+                "status": "h3_ref2va_preflight",
+                "ready": True,
+                "engine": "mirrorromax-h3",
+                "workflow": "ref2va",
+                "node_count": len(workflow),
+                "settings": settings,
+                "references": validated,
+                "elapsed_seconds": round(time.time() - started, 3),
+            }
+
+        queue_started = time.time()
+        print("[H3-REF2VA] queueing official Ref2VA workflow", flush=True)
+        prompt_id = queue_workflow(workflow)
+        queue_submit_seconds = time.time() - queue_started
+
+        processing_started = time.time()
+        history = wait_for_history(prompt_id)
+        processing_seconds = time.time() - processing_started
+        filename, blob = first_video_from_history(history)
+        content_type = mimetypes.guess_type(filename)[0] or "video/mp4"
+
+        result_upload = job_input.get("result_upload") or {}
+        uploaded = put_result(result_upload, blob, content_type) if result_upload.get("url") else None
+        if uploaded:
+            output = {
+                "filename": filename,
+                "kind": "video",
+                "type": "url",
+                "data": uploaded,
+                "bytes": len(blob),
+            }
+        elif len(blob) <= MAX_INLINE_VIDEO_BYTES:
+            output = {
+                "filename": filename,
+                "kind": "video",
+                "type": "base64",
+                "mime": content_type,
+                "data": base64.b64encode(blob).decode("utf-8"),
+                "bytes": len(blob),
+            }
+        else:
+            path = persist_large_video(str(job.get("id") or "ref2va"), filename, blob)
+            output = {
+                "filename": filename,
+                "kind": "video",
+                "type": "network_path",
+                "data": path,
+                "bytes": len(blob),
+                "note": "Provide input.result_upload.url for a browser-accessible result URL.",
+            }
+
+        total_elapsed = time.time() - started
+        dna = {
+            "job_id": str(job.get("id") or ""),
+            "engine": "mirrorromax-h3",
+            "backend": "comfyui_minimax_h3_ref2va",
+            "workflow": "ref2va",
+            "model": settings.get("model_files", {}).get("diffusion"),
+            "worker_version": settings.get("worker_path"),
+            "native_fps": 24,
+            "requested_duration_seconds": settings.get("requested_duration_seconds"),
+            "actual_duration_seconds": settings.get("actual_duration_seconds"),
+            "width": settings.get("width"),
+            "height": settings.get("height"),
+            "aspect_ratio": settings.get("aspect_ratio"),
+            "seed": settings.get("seed"),
+            "reference_counts": settings.get("reference_counts"),
+            "queue_submit_seconds": round(queue_submit_seconds, 3),
+            "processing_seconds": round(processing_seconds, 3),
+            "total_elapsed_seconds": round(total_elapsed, 3),
+        }
+        settings["generation_dna"] = dna
+        print(
+            "[H3-REF2VA] completed "
+            f"prompt_id={prompt_id} elapsed={total_elapsed:.3f}s bytes={len(blob)}",
+            flush=True,
+        )
+        return {
+            "status": "success",
+            "prompt_id": prompt_id,
+            "outputs": [output],
+            "settings": settings,
+            "references": validated,
+        }
+    finally:
+        cleanup_ref2va_paths(prepared)
+
 
 
 def run_director(job, job_input):
@@ -695,6 +825,13 @@ def handler(job):
                 return {"error": str(error), "error_type": "capability_unavailable"}
         if action == "h3_ref2va_status":
             return {"status": "h3_ref2va_status", "ref2va": h3_ref2va_status()}
+        if action == "h3_ref2va_preflight":
+            try:
+                return run_h3_ref2va_job(job, job_input, preflight_only=True)
+            except Ref2VAUnavailable as error:
+                return {"error": str(error), "error_type": "capability_unavailable"}
+            except ValueError as error:
+                return {"error": str(error), "error_type": "invalid_input"}
         if action == "h3_status":
             return {"status": "h3_status", "h3": h3_status()}
         if action == "h3_setup_plan":
@@ -718,6 +855,13 @@ def handler(job):
 
         mode = str(job_input.get("mode") or "").strip().lower()
         engine = str(job_input.get("engine") or job_input.get("model_engine") or "").strip().lower()
+        if is_ref2va_request(job_input):
+            try:
+                return run_h3_ref2va_job(job, job_input, preflight_only=(action == "preflight"))
+            except Ref2VAUnavailable as error:
+                return {"error": str(error), "error_type": "capability_unavailable"}
+            except ValueError as error:
+                return {"error": str(error), "error_type": "invalid_input"}
         if engine in {"freevideo_h3", "h3", "minimax_h3", "minimax-h3"} or mode.startswith("h3_"):
             try:
                 return run_h3_job(job, job_input)
