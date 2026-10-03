@@ -192,7 +192,13 @@ def h3_install(accept_model_license=False):
     )
     output = (result.stdout + "\n" + result.stderr).strip()
     if result.returncode:
-        raise H3Unavailable("H3 setup failed: " + output[-12000:])
+        diagnostics = h3_install_diagnostics()
+        detail = {
+            "message": "H3 setup failed",
+            "setup_log_tail": output[-8000:],
+            "diagnostics": diagnostics,
+        }
+        raise H3Unavailable(json.dumps(detail, ensure_ascii=False))
     return {
         "status": "h3_installed",
         "h3": h3_status(),
