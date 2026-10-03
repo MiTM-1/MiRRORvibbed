@@ -11,6 +11,7 @@ from pathlib import Path
 import requests
 
 from freevideo_backend import H3Unavailable, h3_generation_diagnostics, h3_gpu_check, h3_install, h3_install_diagnostics, h3_runtime_audit, h3_setup_plan, h3_status, run_h3_job
+from h3_ref2va_backend import h3_ref2va_install, h3_ref2va_install_plan, h3_ref2va_status
 
 from ltx25_workflow import (
     CapabilityUnavailable,
@@ -397,6 +398,39 @@ def h3_comfy_runtime_audit():
 
 
 
+
+def h3_ref2va_schema_audit():
+    """Return only the Comfy node schemas needed to compile Ref2VA safely."""
+    wait_for_comfy()
+    response = requests.get(f"http://{COMFY_HOST}/object_info", timeout=60)
+    response.raise_for_status()
+    object_info = response.json()
+    wanted = [
+        "MiniMaxH3ReferenceToVideo",
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "LoadImage",
+        "LoadVideo",
+        "LoadAudio",
+        "RandomNoise",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "BasicGuider",
+        "SamplerCustomAdvanced",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+    ]
+    return {
+        "status": "h3_ref2va_schema_audit",
+        "read_only": True,
+        "nodes": {name: object_info.get(name) for name in wanted},
+    }
+
+
+
 def queue_workflow(workflow):
     r = requests.post(
         f"http://{COMFY_HOST}/prompt",
@@ -614,7 +648,26 @@ def handler(job):
         action = str(job_input.get("action") or "").strip().lower()
         if action == "capabilities":
             capabilities = dict(worker_capabilities())
-            capabilities["freevideo_h3"] = h3_status()
+            freevideo = h3_status()
+            ref2va = h3_ref2va_status()
+            capabilities["freevideo_h3"] = freevideo
+            capabilities["mirrorromax_h3"] = {
+                "available": bool(freevideo.get("ready") or ref2va.get("ready")),
+                "fl2va": {
+                    "ready": bool(freevideo.get("ready")),
+                    "backend": "freevideo_vdn_h3",
+                },
+                "ref2va": {
+                    "ready": bool(ref2va.get("ready")),
+                    "backend": "comfyui_minimax_h3_ref2va",
+                    "limits": {
+                        "reference_images": 9,
+                        "reference_videos": 3,
+                        "reference_audio": 3,
+                        "mixed_files": 12,
+                    },
+                },
+            }
             return {"status": "capabilities", "capabilities": capabilities}
         if action == "backend_audit":
             return {
@@ -626,6 +679,22 @@ def handler(job):
             return h3_runtime_audit()
         if action == "h3_comfy_runtime_audit":
             return h3_comfy_runtime_audit()
+        if action == "h3_ref2va_schema_audit":
+            return h3_ref2va_schema_audit()
+        if action == "h3_ref2va_install_plan":
+            return h3_ref2va_install_plan(include_turbo=bool(job_input.get("include_turbo")))
+        if action == "h3_ref2va_install":
+            try:
+                return h3_ref2va_install(
+                    accept_model_license=bool(job_input.get("accept_model_license")),
+                    include_turbo=bool(job_input.get("include_turbo")),
+                )
+            except ValueError as error:
+                return {"error": str(error), "error_type": "invalid_input"}
+            except RuntimeError as error:
+                return {"error": str(error), "error_type": "capability_unavailable"}
+        if action == "h3_ref2va_status":
+            return {"status": "h3_ref2va_status", "ref2va": h3_ref2va_status()}
         if action == "h3_status":
             return {"status": "h3_status", "h3": h3_status()}
         if action == "h3_setup_plan":
