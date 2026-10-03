@@ -280,6 +280,61 @@ def _decode_data(value):
     return base64.b64decode(raw, validate=True)
 
 
+def h3_generation_diagnostics():
+    """Return compact diagnostics from the newest retained H3 generation."""
+    if not H3_RESULTS.is_dir():
+        return {"status": "h3_generation_diagnostics", "found": False, "message": "No H3 results directory found."}
+    runs = sorted(
+        (path for path in H3_RESULTS.iterdir() if path.is_dir()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not runs:
+        return {"status": "h3_generation_diagnostics", "found": False, "message": "No retained H3 generation directory found."}
+    run = runs[0]
+    files = []
+    candidates = sorted(
+        (path for path in run.rglob("*") if path.is_file()),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for path in candidates[:20]:
+        row = {"path": str(path), "bytes": path.stat().st_size}
+        if path.suffix.lower() in {".log", ".txt", ".json"} or path.name.endswith(".stderr") or path.name.endswith(".stdout"):
+            try:
+                row["tail"] = path.read_text(encoding="utf-8", errors="replace")[-8000:]
+            except OSError as error:
+                row["tail"] = "Could not read: " + repr(error)
+        files.append(row)
+    return {
+        "status": "h3_generation_diagnostics",
+        "found": True,
+        "run": str(run),
+        "files": files,
+        "h3": h3_status(),
+    }
+
+
+def _validate_downloaded_asset(path):
+    """Reject HTML/error pages that were saved with an image/video filename."""
+    suffix = path.suffix.lower()
+    head = path.read_bytes()[:32]
+    if suffix in {".jpg", ".jpeg"}:
+        if not head.startswith(b"\xff\xd8\xff"):
+            preview = path.read_bytes()[:300].decode("utf-8", errors="replace")
+            raise ValueError("Downloaded JPEG is not actually a JPEG. The URL may be a preview/sign-in page. First bytes: " + preview)
+    elif suffix == ".png":
+        if not head.startswith(b"\x89PNG\r\n\x1a\n"):
+            raise ValueError("Downloaded PNG is not actually a PNG")
+    elif suffix == ".webp":
+        if not (head.startswith(b"RIFF") and head[8:12] == b"WEBP"):
+            raise ValueError("Downloaded WEBP is not actually a WEBP")
+    elif suffix == ".mp4":
+        if len(head) < 12 or head[4:8] != b"ftyp":
+            raise ValueError("Downloaded MP4 is not actually an MP4")
+    return path
+
+
 def _write_item(item, folder):
     name = Path(str(item.get("name") or "asset")).name
     if not name:
@@ -299,7 +354,7 @@ def _write_item(item, folder):
         target.write_bytes(_decode_data(encoded))
     if not target.is_file() or target.stat().st_size == 0:
         raise ValueError(f"H3 asset could not be materialised: {name}")
-    return target
+    return _validate_downloaded_asset(target)
 
 
 def _materialize(job_input, folder):
@@ -467,6 +522,10 @@ def run_h3_job(job, job_input):
         check=False,
     )
     if result.returncode:
+        stdout_path = output_dir / "mirrorvidgen_wrapper.stdout"
+        stderr_path = output_dir / "mirrorvidgen_wrapper.stderr"
+        stdout_path.write_text(result.stdout or "", encoding="utf-8")
+        stderr_path.write_text(result.stderr or "", encoding="utf-8")
         detail = (result.stdout + "\n" + result.stderr).strip()[-12000:]
         raise RuntimeError("FreeVideo H3 generation failed: " + detail)
     if not output.is_file() or output.stat().st_size == 0:
