@@ -12,6 +12,10 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: mirrorvidgen-worker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -44,4 +48,4 @@ jobs:
             ghcr.io/mitm-1/mirrorvidgen-worker:${{ github.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/MiTM-1/MiRRORvibbed
-            org.opencontainers.image.description=MiRRORvidgen LTX-2.5 RunPod worker
+            org.opencontainers.image.description=MiRRORvidgen LTX-2.5 + FreeVideo H3 RunPod worker
