@@ -1,0 +1,30 @@
+name: Build MiRRORvidgen enhancement
+on:
+  push:
+    branches: [main]
+    paths: ['mirrorvidgen-enhancement/**', '.github/workflows/build-mirrorvidgen-enhancement.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify real interpolation
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          cd mirrorvidgen-enhancement
+          python test_processor.py
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: mirrorvidgen-enhancement
+          push: true
+          tags: ghcr.io/mitm-1/mirrorvidgen-enhancement:${{ github.sha }}
