@@ -10,7 +10,7 @@ from pathlib import Path
 
 import requests
 
-from freevideo_backend import H3Unavailable, h3_install, h3_setup_plan, h3_status, run_h3_job
+from freevideo_backend import H3Unavailable, h3_install, h3_install_diagnostics, h3_setup_plan, h3_status, run_h3_job
 
 from ltx25_workflow import (
     CapabilityUnavailable,
@@ -544,6 +544,8 @@ def handler(job):
                 return {"error": str(error), "error_type": "invalid_input"}
             except H3Unavailable as error:
                 return {"error": str(error), "error_type": "capability_unavailable"}
+        if action == "h3_diagnostics":
+            return h3_install_diagnostics()
 
         mode = str(job_input.get("mode") or "").strip().lower()
         engine = str(job_input.get("engine") or job_input.get("model_engine") or "").strip().lower()
