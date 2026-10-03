@@ -18,8 +18,16 @@ import time
 import requests
 
 
-FREEVIDEO_SOURCE = Path(os.environ.get("FREEVIDEO_SOURCE", "/opt/freevideo"))
 FREEVIDEO_HOME = Path(os.environ.get("FREEVIDEO_HOME", "/runpod-volume/freevideo-h3"))
+_BUNDLED_FREEVIDEO_SOURCE = Path(os.environ.get("FREEVIDEO_SOURCE", "/opt/freevideo"))
+_PERSISTENT_FREEVIDEO_SOURCE = FREEVIDEO_HOME / "source"
+# Prefer the persistent, setup-matched checkout when present. The bundled copy
+# remains a bootstrap fallback for a fresh volume and for the read-only plan.
+FREEVIDEO_SOURCE = (
+    _PERSISTENT_FREEVIDEO_SOURCE
+    if (_PERSISTENT_FREEVIDEO_SOURCE / "freevideo").is_file()
+    else _BUNDLED_FREEVIDEO_SOURCE
+)
 FREEVIDEO_BIN = FREEVIDEO_SOURCE / "freevideo"
 FREEVIDEO_CONFIG = FREEVIDEO_HOME / "machine.json"
 H3_RESULTS = Path(os.environ.get("MIRRORVIDGEN_H3_RESULTS", "/runpod-volume/results"))
