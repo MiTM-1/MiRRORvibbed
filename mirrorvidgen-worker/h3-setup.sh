@@ -22,6 +22,37 @@ echo " MiRRORvidgen — MiniMax H3 / FreeVideo setup"
 echo " Persistent root: $ROOT"
 echo "=================================================="
 echo
+echo "Applying RunPod network-volume executable compatibility fix..."
+/opt/venv/bin/python - "$SOURCE/freevideo_engine/bootstrap.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+needle = """        uv = (self.root / 'tools' / uv_spec['executable'] if self.system == 'Windows' else
+              self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv')
+        self.env['FREEVIDEO_UV'] = str(uv)
+"""
+replacement = """        uv = (self.root / 'tools' / uv_spec['executable'] if self.system == 'Windows' else
+              self.root / 'tools' / 'uv-x86_64-unknown-linux-gnu' / 'uv')
+        if self.system != 'Windows':
+            # RunPod network volumes can preserve extracted files without the
+            # executable bit FreeVideo expects. Restore it after extraction,
+            # before supervised child-process validation.
+            try:
+                uv.chmod(uv.stat().st_mode | 0o111)
+            except OSError as error:
+                raise RuntimeError('Could not mark FreeVideo uv executable on RunPod volume: %s' % error)
+            if not os.access(uv, os.X_OK):
+                raise RuntimeError('FreeVideo uv exists but the RunPod volume does not allow execution: %s' % uv)
+        self.env['FREEVIDEO_UV'] = str(uv)
+"""
+if needle in text:
+    path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+elif "RunPod network volumes can preserve extracted files" not in text:
+    raise SystemExit("Pinned FreeVideo bootstrap layout changed; refusing an unsafe patch")
+PY
+
 echo "Running read-only hardware/model plan first..."
 "$SOURCE/freevideo" --root "$ROOT" setup --plan --json --plain
 
