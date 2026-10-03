@@ -16,6 +16,7 @@ import subprocess
 import time
 
 import requests
+import shutil
 
 
 FREEVIDEO_HOME = Path(os.environ.get("FREEVIDEO_HOME", "/runpod-volume/freevideo-h3"))
@@ -89,6 +90,164 @@ def h3_status():
             "custom_dimensions": True,
         },
     }
+
+
+
+def _git_head(path):
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(path), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    value = result.stdout.strip()
+    return value if result.returncode == 0 and value else None
+
+
+def _model_source_inventory():
+    path = FREEVIDEO_SOURCE / "freevideo_engine" / "model_files.json"
+    repos = []
+    files = []
+    if path.is_file():
+        try:
+            rows = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            rows = []
+        if isinstance(rows, list):
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                repo = str(row.get("repo") or "")
+                file = str(row.get("file") or "")
+                if repo and repo not in repos:
+                    repos.append(repo)
+                if file:
+                    files.append(file)
+    media_request = FREEVIDEO_SOURCE / "freevideo_engine" / "media_request.py"
+    source = ""
+    if media_request.is_file():
+        try:
+            source = media_request.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            source = ""
+    return {
+        "manifest": str(path),
+        "repos": repos,
+        "uses_openvdn": any(repo == "OpenVDN/vdn-minimax-h3" for repo in repos),
+        "uses_official_minimax_h3": any(repo == "MiniMaxAI/MiniMax-H3" for repo in repos),
+        "declares_official_ref2va_files": any("ref2va/" in file.lower() for file in files),
+        "declares_official_fl2va_files": any("fl2va/" in file.lower() for file in files),
+        "media_tasks": {
+            "ref2va": "'ref2va'" in source or '"ref2va"' in source,
+            "ref2va_audio": "'ref2va_audio'" in source or '"ref2va_audio"' in source,
+            "ref2va_av": "'ref2va_av'" in source or '"ref2va_av"' in source,
+            "fl2va": "'fl2va'" in source or '"fl2va"' in source,
+        },
+    }
+
+
+def _official_checkpoint_markers():
+    candidates = {
+        "fl2va": [
+            Path(os.environ.get("MIRRORVIDGEN_H3_FL2VA_HOME", "/runpod-volume/MiniMax-H3/FL2VA")) / "model_index.json",
+            Path("/runpod-volume/minimax-h3/FL2VA/model_index.json"),
+        ],
+        "ref2va": [
+            Path(os.environ.get("MIRRORVIDGEN_H3_REF2VA_HOME", "/runpod-volume/MiniMax-H3/Ref2VA")) / "model_index.json",
+            Path("/runpod-volume/minimax-h3/Ref2VA/model_index.json"),
+        ],
+    }
+    hub = Path(os.environ.get("FREEVIDEO_HF_HOME", "/runpod-volume/.cache/huggingface")) / "hub"
+    snapshot_root = hub / "models--MiniMaxAI--MiniMax-H3" / "snapshots"
+    if snapshot_root.is_dir():
+        for snapshot in snapshot_root.iterdir():
+            if not snapshot.is_dir():
+                continue
+            candidates["fl2va"].append(snapshot / "FL2VA" / "model_index.json")
+            candidates["ref2va"].append(snapshot / "Ref2VA" / "model_index.json")
+    return {
+        key: [str(path) for path in paths if path.is_file()]
+        for key, paths in candidates.items()
+    }
+
+
+def h3_runtime_audit():
+    """Read-only audit of the deployed H3 runtime and persistent storage.
+
+    This intentionally does not install, delete, move, or redownload anything.
+    It distinguishes FreeVideo/VDN reference conditioning from MiniMax's
+    separate official Ref2VA checkpoint so capability reporting cannot
+    accidentally overstate what is installed.
+    """
+    machine = _machine_state()
+    inventory = _model_source_inventory()
+    markers = _official_checkpoint_markers()
+    volume = Path("/runpod-volume")
+    disk = None
+    if volume.exists():
+        try:
+            usage = shutil.disk_usage(volume)
+            disk = {
+                "path": str(volume),
+                "total_bytes": usage.total,
+                "used_bytes": usage.used,
+                "free_bytes": usage.free,
+            }
+        except OSError:
+            disk = None
+
+    cache = Path(str(machine.get("cache") or "")) if machine.get("cache") else None
+    python = Path(str(machine.get("python") or "")) if machine.get("python") else None
+    source_commit = _git_head(FREEVIDEO_SOURCE)
+    h3 = h3_status()
+
+    freevideo_reference_code = bool(
+        inventory["media_tasks"].get("ref2va")
+        and inventory["media_tasks"].get("fl2va")
+    )
+    official_ref2va_ready = bool(markers["ref2va"])
+    official_fl2va_detected = bool(markers["fl2va"])
+
+    return {
+        "status": "h3_runtime_audit",
+        "read_only": True,
+        "root": str(FREEVIDEO_HOME),
+        "source": str(FREEVIDEO_SOURCE),
+        "source_commit": source_commit,
+        "machine": {
+            "ready": bool(machine.get("ready")),
+            "cache": str(cache) if cache else None,
+            "cache_exists": bool(cache and cache.exists()),
+            "python": str(python) if python else None,
+            "python_exists": bool(python and python.is_file()),
+        },
+        "persistent_volume": disk,
+        "freevideo_model_sources": inventory,
+        "official_checkpoint_markers": markers,
+        "workflow_state": {
+            "fl2va": {
+                "ready": bool(h3.get("ready")),
+                "backend": "freevideo_vdn_h3",
+                "official_minimax_fl2va_checkpoint_detected": official_fl2va_detected,
+            },
+            "ref2va": {
+                "freevideo_reference_conditioning_available": freevideo_reference_code,
+                "freevideo_reference_backend": (
+                    "vdn_h3_reference_conditioning"
+                    if inventory.get("uses_openvdn")
+                    else "unknown"
+                ),
+                "official_minimax_ref2va_checkpoint_detected": official_ref2va_ready,
+                "official_ready": bool(h3.get("ready") and official_ref2va_ready),
+            },
+        },
+        "h3": h3,
+    }
+
 
 
 def h3_install_diagnostics():
