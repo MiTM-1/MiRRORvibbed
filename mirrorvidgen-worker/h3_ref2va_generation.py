@@ -341,14 +341,44 @@ def _prepare_image(source: Path, target: Path, label: str) -> dict[str, Any]:
     }
 
 
-def _prepare_video(source: Path, target: Path, label: str) -> dict[str, Any]:
+def _prepare_video(
+    source: Path,
+    target: Path,
+    label: str,
+    *,
+    trim_start_seconds: float = 0.0,
+    trim_duration_seconds: float | None = None,
+) -> dict[str, Any]:
     probe = _probe(source)
     stream = _video_stream(probe)
     if stream is None:
         raise ValueError(f"{label} contains no video stream")
-    duration = _duration(probe)
-    if duration < 2.0 or duration > 15.0:
-        raise ValueError(f"{label} duration must be 2–15 seconds; received {duration:.3f}s")
+    source_duration = _duration(probe)
+    if source_duration <= 0:
+        raise ValueError(f"{label} has an invalid duration")
+
+    start = float(trim_start_seconds or 0.0)
+    if start < 0:
+        raise ValueError(f"{label} trim start must be >= 0 seconds")
+    if start >= source_duration:
+        raise ValueError(
+            f"{label} trim start {start:.3f}s is outside the {source_duration:.3f}s source"
+        )
+
+    if trim_duration_seconds is None:
+        selected_duration = source_duration - start
+    else:
+        selected_duration = float(trim_duration_seconds)
+    if selected_duration < 2.0 or selected_duration > 15.0:
+        raise ValueError(
+            f"{label} selected duration must be 2–15 seconds; received {selected_duration:.3f}s"
+        )
+    if start + selected_duration > source_duration + 0.05:
+        raise ValueError(
+            f"{label} trim window exceeds the source duration "
+            f"({start:.3f}s + {selected_duration:.3f}s > {source_duration:.3f}s)"
+        )
+
     width = int(stream.get("width") or 0)
     height = int(stream.get("height") or 0)
     if width <= 0 or height <= 0:
@@ -358,10 +388,13 @@ def _prepare_video(source: Path, target: Path, label: str) -> dict[str, Any]:
     fps = _fps_value(stream.get("r_frame_rate"))
     has_audio = _audio_stream(probe) is not None
     # MiniMaxH3ReferenceToVideo expects video frame tensors at 24 fps.
-    # Preserve the entire clip and soundtrack; this is never a single-frame extraction.
+    # Preserve the full selected time window and soundtrack; this is never
+    # a single-frame extraction. Trimming is explicit and opt-in per ref.
     command = [
         "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+        "-ss", f"{start:.6f}",
         "-i", str(source),
+        "-t", f"{selected_duration:.6f}",
         "-map", "0:v:0", "-map", "0:a?",
         "-vf", "fps=24",
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
@@ -380,6 +413,9 @@ def _prepare_video(source: Path, target: Path, label: str) -> dict[str, Any]:
     return {
         "name": target.name,
         "duration_seconds": round(normalized_duration, 3),
+        "source_duration_seconds": round(source_duration, 3),
+        "trim_start_seconds": round(start, 3),
+        "trim_requested_seconds": round(selected_duration, 3),
         "source_fps": round(fps, 4) if fps else None,
         "fps": 24,
         "width": int(normalized_stream.get("width") or width),
@@ -455,7 +491,20 @@ def prepare_ref2va_references(job_id: Any, job_input: dict[str, Any]) -> dict[st
 
                 if kind == "video":
                     target = COMFY_INPUT / f"mv_ref2va_{token}_video_{index}.mp4"
-                    meta = _prepare_video(source, target, label)
+                    trim_start = item.get("trim_start_seconds", item.get("start_time_seconds", 0))
+                    trim_duration = item.get(
+                        "trim_duration_seconds",
+                        item.get("reference_duration_seconds"),
+                    )
+                    meta = _prepare_video(
+                        source,
+                        target,
+                        label,
+                        trim_start_seconds=float(trim_start or 0),
+                        trim_duration_seconds=(
+                            float(trim_duration) if trim_duration is not None else None
+                        ),
+                    )
                 elif kind == "image":
                     target = COMFY_INPUT / f"mv_ref2va_{token}_image_{index}{suffix}"
                     meta = _prepare_image(source, target, label)
