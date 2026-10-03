@@ -239,6 +239,11 @@ def _environment():
     env["FREEVIDEO_SOURCE_DIR"] = str(FREEVIDEO_SOURCE)
     env.setdefault("HF_HOME", os.environ.get("FREEVIDEO_HF_HOME", "/runpod-volume/.cache/huggingface"))
     env.setdefault("PYTHONUNBUFFERED", "1")
+    # FreeVideo records the physical GPU UUID used during setup. That is safe
+    # on a fixed machine but not on RunPod Serverless, where a later request
+    # may land on a different physical GPU. Supplying the current container's
+    # logical device prevents FreeVideo from falling back to the stale UUID.
+    env.setdefault("CUDA_VISIBLE_DEVICES", "0")
     return env
 
 
@@ -278,6 +283,56 @@ def _decode_data(value):
     if "," in raw and raw.lstrip().startswith("data:"):
         raw = raw.split(",", 1)[1]
     return base64.b64decode(raw, validate=True)
+
+
+def h3_gpu_check():
+    """Verify FreeVideo's installed Torch runtime can see this RunPod worker GPU."""
+    machine = _machine_state()
+    python = Path(str(machine.get("python") or ""))
+    if not python.is_file():
+        return {
+            "status": "h3_gpu_check",
+            "ready": False,
+            "error": "FreeVideo Python runtime is missing",
+            "h3": h3_status(),
+        }
+    code = (
+        "import json, torch; "
+        "ok=torch.cuda.is_available(); "
+        "print(json.dumps({"
+        "'cuda_available':ok,"
+        "'device_count':torch.cuda.device_count(),"
+        "'device_name':torch.cuda.get_device_name(0) if ok else None,"
+        "'capability':list(torch.cuda.get_device_capability(0)) if ok else None,"
+        "'torch_version':torch.__version__,"
+        "'torch_cuda':torch.version.cuda"
+        "}))"
+    )
+    env = _environment()
+    result = subprocess.run(
+        [str(python), "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    payload = {}
+    if result.stdout.strip():
+        try:
+            payload = json.loads(result.stdout.strip().splitlines()[-1])
+        except json.JSONDecodeError:
+            payload = {"stdout": result.stdout[-4000:]}
+    return {
+        "status": "h3_gpu_check",
+        "ready": bool(result.returncode == 0 and payload.get("cuda_available")),
+        "cuda_visible_devices": env.get("CUDA_VISIBLE_DEVICES"),
+        "saved_setup_gpu_uuid": machine.get("gpu_uuid"),
+        "probe": payload,
+        "stderr": result.stderr[-4000:],
+        "returncode": result.returncode,
+        "h3": h3_status(),
+    }
 
 
 def h3_generation_diagnostics():
