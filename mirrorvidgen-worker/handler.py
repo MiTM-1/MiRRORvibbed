@@ -311,6 +311,92 @@ def stitch_continuation(source_name, segment_blob, settings, job_id):
     return target.name, target.read_bytes()
 
 
+
+def h3_comfy_runtime_audit():
+    """Read-only audit of the deployed ComfyUI H3 Ref2VA prerequisites."""
+    wait_for_comfy()
+    system_stats = {}
+    try:
+        response = requests.get(f"http://{COMFY_HOST}/system_stats", timeout=15)
+        response.raise_for_status()
+        value = response.json()
+        if isinstance(value, dict):
+            system_stats = value
+    except Exception as error:
+        system_stats = {"error": str(error)}
+
+    response = requests.get(f"http://{COMFY_HOST}/object_info", timeout=60)
+    response.raise_for_status()
+    object_info = response.json()
+    if not isinstance(object_info, dict):
+        object_info = {}
+
+    required_nodes = [
+        "MiniMaxH3ReferenceToVideo",
+        "UNETLoader",
+        "CLIPLoader",
+        "VAELoader",
+        "VAEDecode",
+        "VAEDecodeAudio",
+        "CreateVideo",
+        "SaveVideo",
+        "KSamplerSelect",
+        "BasicScheduler",
+        "SamplerCustomAdvanced",
+        "BasicGuider",
+    ]
+    node_state = {name: name in object_info for name in required_nodes}
+
+    required_models = {
+        "vae": [
+            "minimax_h3_video_vae_int8_convrot.safetensors",
+            "minimax_h3_audio_vae_fp32.safetensors",
+        ],
+        "diffusion_models": [
+            "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+        ],
+        "text_encoders": [
+            "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+        ],
+        "loras": [
+            "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+        ],
+    }
+    model_state = {}
+    for folder, names in required_models.items():
+        root = Path("/runpod-volume/models") / folder
+        model_state[folder] = {
+            name: {
+                "present": (root / name).is_file(),
+                "path": str(root / name),
+                "bytes": (root / name).stat().st_size if (root / name).is_file() else None,
+            }
+            for name in names
+        }
+
+    return {
+        "status": "h3_comfy_runtime_audit",
+        "read_only": True,
+        "comfy_host": COMFY_HOST,
+        "system_stats": {
+            "system": system_stats.get("system") if isinstance(system_stats, dict) else None,
+            "devices": system_stats.get("devices") if isinstance(system_stats, dict) else None,
+        },
+        "required_nodes": node_state,
+        "all_required_nodes_present": all(node_state.values()),
+        "required_models": model_state,
+        "all_required_core_models_present": all(
+            row["present"]
+            for folder in ("vae", "diffusion_models", "text_encoders")
+            for row in model_state[folder].values()
+        ),
+        "optional_turbo_lora_present": all(
+            row["present"] for row in model_state["loras"].values()
+        ),
+    }
+
+
+
 def queue_workflow(workflow):
     r = requests.post(
         f"http://{COMFY_HOST}/prompt",
@@ -538,6 +624,8 @@ def handler(job):
             }
         if action == "h3_runtime_audit":
             return h3_runtime_audit()
+        if action == "h3_comfy_runtime_audit":
+            return h3_comfy_runtime_audit()
         if action == "h3_status":
             return {"status": "h3_status", "h3": h3_status()}
         if action == "h3_setup_plan":
