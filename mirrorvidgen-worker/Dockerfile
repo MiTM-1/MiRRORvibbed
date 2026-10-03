@@ -22,6 +22,7 @@ RUN rm -rf /opt/freevideo \
 COPY extra_model_paths.yaml /comfyui/extra_model_paths.yaml
 COPY handler.py /handler.py
 COPY freevideo_backend.py /freevideo_backend.py
+COPY h3_ref2va_backend.py /h3_ref2va_backend.py
 COPY h3-setup.sh /h3-setup.sh
 COPY ltx25_workflow.py /ltx25_workflow.py
 COPY workflow_compiler.py /workflow_compiler.py
@@ -30,7 +31,7 @@ COPY tests/ltx25-t2v-smoke-request.json /ltx25-t2v-template.json
 # Fail the image build immediately if either backend routing module has a syntax error.
 RUN chmod +x /h3-setup.sh \
     && PYTHONPATH=/ /opt/venv/bin/python -m py_compile \
-    /handler.py /freevideo_backend.py /ltx25_workflow.py /workflow_compiler.py
+    /handler.py /freevideo_backend.py /h3_ref2va_backend.py /ltx25_workflow.py /workflow_compiler.py
 
 ENV NETWORK_VOLUME_DEBUG=false
 ENV MIRRORVIDGEN_POLL_INTERVAL=1
