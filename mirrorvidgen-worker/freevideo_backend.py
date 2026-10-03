@@ -91,6 +91,35 @@ def h3_status():
     }
 
 
+def h3_install(accept_model_license=False):
+    """Install/prepare FreeVideo H3 on the persistent network volume.
+
+    This is intentionally gated behind an explicit request flag. The caller
+    must pass accept_model_license=True; otherwise no model download starts.
+    """
+    if not accept_model_license:
+        raise ValueError("H3 install requires input.accept_model_license=true")
+    script = Path("/h3-setup.sh")
+    if not script.is_file():
+        raise H3Unavailable("H3 setup helper is missing from this worker image")
+    result = subprocess.run(
+        [str(script), "--accept-model-license"],
+        env=_environment(),
+        capture_output=True,
+        text=True,
+        timeout=int(os.environ.get("MIRRORVIDGEN_H3_SETUP_TIMEOUT", "7200")),
+        check=False,
+    )
+    output = (result.stdout + "\n" + result.stderr).strip()
+    if result.returncode:
+        raise H3Unavailable("H3 setup failed: " + output[-12000:])
+    return {
+        "status": "h3_installed",
+        "h3": h3_status(),
+        "log_tail": output[-12000:],
+    }
+
+
 def h3_setup_plan():
     """Run FreeVideo's read-only setup planner. This does not accept a licence."""
     if not FREEVIDEO_BIN.is_file():
