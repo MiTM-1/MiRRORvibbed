@@ -86,6 +86,27 @@ elif "RunPod network volumes can lose executable mode bits on CUDA" not in text:
     raise SystemExit("Pinned FreeVideo CUDA toolkit layout changed; refusing an unsafe patch")
 PY
 
+echo "Repairing executable permissions on any retained RunPod runtime files..."
+if [ -d "$ROOT/tools" ]; then
+  find "$ROOT/tools" -type f \( -path '*/cuda-*/bin/*' -o -path '*/cuda-*/nvvm/bin/*' \) -exec chmod a+x {} + 2>/dev/null || true
+fi
+if [ -d "$ROOT/envs" ]; then
+  find "$ROOT/envs" -type f -path '*/bin/*' -exec chmod a+x {} + 2>/dev/null || true
+fi
+if [ -d "$ROOT/python" ]; then
+  find "$ROOT/python" -type f -path '*/bin/*' -exec chmod a+x {} + 2>/dev/null || true
+fi
+
+# Fail early with a useful message if an already-prepared CUDA toolkit still
+# cannot execute after the permission repair.
+for tool in "$ROOT"/tools/cuda-*/bin/nvcc "$ROOT"/tools/cuda-*/nvvm/bin/cicc; do
+  [ -e "$tool" ] || continue
+  if [ ! -x "$tool" ]; then
+    echo "ERROR: retained CUDA tool is still not executable: $tool"
+    exit 3
+  fi
+done
+
 echo "Running read-only hardware/model plan first..."
 "$SOURCE/freevideo" --root "$ROOT" setup --plan --json --plain
 
