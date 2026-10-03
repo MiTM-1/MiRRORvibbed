@@ -320,12 +320,23 @@ def _prepare_image(source: Path, target: Path, label: str) -> dict[str, Any]:
     stream = _video_stream(probe)
     if stream is None or int(stream.get("width") or 0) <= 0 or int(stream.get("height") or 0) <= 0:
         raise ValueError(f"{label} is not a decodable image")
+    width = int(stream.get("width") or 0)
+    height = int(stream.get("height") or 0)
+    # ComfyUI's current LoadImage path decodes still images through PyAV.
+    # Extremely tiny images such as 1x1 can pass ffmpeg probing yet fail later
+    # when PyAV configures its filter graph (EINVAL / errno 22). Fail closed
+    # during preflight so an invalid reference can never reach the paid queue.
+    if width < 32 or height < 32:
+        raise ValueError(
+            f"{label} is too small for ComfyUI/H3 reference decoding; "
+            f"minimum is 32x32, received {width}x{height}"
+        )
     _full_decode(source, "image")
     shutil.copy2(source, target)
     return {
         "name": target.name,
-        "width": int(stream.get("width") or 0),
-        "height": int(stream.get("height") or 0),
+        "width": width,
+        "height": height,
         "codec": str(stream.get("codec_name") or ""),
     }
 
