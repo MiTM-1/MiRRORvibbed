@@ -7,6 +7,7 @@ RUN git clone https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git /comf
 # No pip upgrade, checkpoint download or modification of baseline workflows.
 COPY h3_addons.py /h3_addons.py
 COPY h3_context_store.py /h3_context_store.py
+COPY h3_addons_cpu_check.py /h3_addons_cpu_check.py
 RUN cp /handler.py /h3_baseline_handler.py
 COPY h3_addon_handler.py /handler.py
 RUN /opt/venv/bin/python -m py_compile /handler.py /h3_addons.py /h3_context_store.py
