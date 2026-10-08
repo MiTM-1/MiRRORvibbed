@@ -15,6 +15,7 @@ jobs:
   build:
     if: startsWith(github.ref, 'refs/heads/dev/h3-')
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Make room for the inherited worker image
@@ -44,8 +45,9 @@ jobs:
         env:
           IMAGE: ghcr.io/mitm-1/mirrorvidgen-worker@${{ steps.candidate.outputs.digest }}
         run: |
+          set -euo pipefail
           docker pull "$IMAGE"
-          docker run --rm --entrypoint /opt/venv/bin/python -e CUDA_VISIBLE_DEVICES= "$IMAGE" /h3_addons_cpu_check.py | tee h3-addons-cpu-report.log
+          docker run --rm --entrypoint /opt/venv/bin/python -e CUDA_VISIBLE_DEVICES= "$IMAGE" /h3_addons_cpu_check.py 2>&1 | tee h3-addons-cpu-report.log
       - name: Compare inherited dependency state
         if: always()
         run: |

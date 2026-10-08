@@ -21,6 +21,13 @@ REQUIRED = ["MiniMaxH3ReferenceToVideo", "MiniMaxH3ImageToVideo",
 
 def main():
     import torch
+    # ComfyUI disables CLI parsing when embedded unless explicitly enabled.
+    # The server process parses --cpu itself; this standalone layout probe must
+    # enable parsing before importing ComfyUI model-management modules too.
+    import comfy.options
+    comfy.options.enable_args_parsing()
+    import comfy.cli_args
+    assert comfy.cli_args.args.cpu, "Embedded ComfyUI must be configured for CPU"
     assert not torch.cuda.is_available(), "CPU check must not access a GPU"
     assert os.environ.get("MIRRORVIDGEN_H3_ADDONS_TEST") == "false"
     dependencies = subprocess.run([sys.executable, "-m", "pip", "check"], capture_output=True, text=True)
@@ -49,6 +56,7 @@ def main():
         with urllib.request.urlopen("http://127.0.0.1:8188/system_stats", timeout=10) as response:
             stats = json.load(response)
         report["system"] = stats.get("system")
+        print(json.dumps(report, indent=2, default=str), flush=True)
         pack = Path("/comfyui/custom_nodes/ComfyUI-H3-Motion-Context")
         spec = importlib.util.spec_from_file_location("h3_motion_cpu", pack / "layout_contract.py")
         layout = importlib.util.module_from_spec(spec)
@@ -57,6 +65,22 @@ def main():
         assert layout.is_checked()
         report["real_comfy_layout_contract"] = "passed"
         report["turbo_shift_inputs"] = list(info["MiniMaxH3SigmaShift"].get("input", {}).get("required", {}))
+        from h3_addons import node, validate_addon_schema
+        probe_graph = {
+            "context": node("MiniMaxH3MotionContext", conditioning=["conditioning", 0],
+                vae=["vae", 0], latent=["latent", 0], context_length="22",
+                audio_context_length=24, context_latent=["previous", 0]),
+            "trim": node("MiniMaxH3MotionContextTrim", images=["decode", 0],
+                audio=["audio", 0], trim_frames=["context", 1], fps=24.0, match_tail=True),
+            "save": node("MiniMaxH3MotionContextSaveLatent", latent=["sample", 0],
+                filename_prefix="h3_addons/cpu-contract/clip", clip_index=1),
+            "load": node("MiniMaxH3MotionContextLoadLatent", latent_path="cpu-fixture.safetensors", clip_index=1),
+            "lora": node("LoraLoaderModelOnly", model=["model", 0],
+                lora_name="minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors", strength_model=1.0),
+            "shift": node("MiniMaxH3SigmaShift", model=["lora", 0], shift_video=12.0, shift_audio=3.0),
+        }
+        validate_addon_schema(probe_graph, info)
+        report["addon_input_schema_contract"] = "passed"
         print(json.dumps(report, indent=2, default=str), flush=True)
         # Existing base dependency conflicts must be compared separately rather
         # than fixed by changing the proven image's dependency versions.
