@@ -1,0 +1,14 @@
+# Experimental image only. Never retag or switch production automatically.
+FROM ghcr.io/mitm-1/mirrorvidgen-worker:7b21b2c015b21a512498cdcaa357da4720208cad@sha256:565f3dbf579c475aa8edc050b80757312e234adfdc5fd4c5d51abedcd1277068
+USER root
+ARG H3_MOTION_COMMIT=5335715abe54c1a9bfbe3494da29aae3e8635ce3
+RUN git clone https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context.git /comfyui/custom_nodes/ComfyUI-H3-Motion-Context \
+    && git -C /comfyui/custom_nodes/ComfyUI-H3-Motion-Context checkout "$H3_MOTION_COMMIT"
+# No pip upgrade, checkpoint download or modification of baseline workflows.
+COPY h3_addons.py /h3_addons.py
+COPY h3_context_store.py /h3_context_store.py
+COPY h3_addons_cpu_check.py /h3_addons_cpu_check.py
+RUN cp /handler.py /h3_baseline_handler.py
+COPY h3_addon_handler.py /handler.py
+RUN /opt/venv/bin/python -m py_compile /handler.py /h3_addons.py /h3_context_store.py
+ENV MIRRORVIDGEN_H3_ADDONS_TEST=false
