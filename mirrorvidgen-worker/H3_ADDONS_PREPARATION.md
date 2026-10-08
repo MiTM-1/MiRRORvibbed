@@ -59,11 +59,15 @@ These are graph-planned durations, not measured outputs. The candidate probes de
 6 existing workflow compiler tests passed.
 Python compileall passed for worker source.
 Pinned upstream Motion Context mock smoke suite passed (references, visual/audio alignment, resolution rejection, Save/Load and overlap trimming).
-These use mocks/fixtures: no real H3 tensor layout, quantised LoRA output, GPU startup, quality, Safari or cost benchmark is proven.
-Docker executable is unavailable in this workspace, so no local Docker build ran. The manual GitHub build definition is prepared but not dispatched. No candidate image has been published.
+The isolated GitHub build and CPU-only validation passed on 2026-10-08 (run 37856330909, commit 86e2da759af4ef829f250818df5ea68ce7785adf).
+Candidate image: `ghcr.io/mitm-1/mirrorvidgen-worker:h3-addons-86e2da759af4ef829f250818df5ea68ce7785adf`.
+Candidate image digest: `sha256:b6b40040c6b628e7b750f1c6860468dd6e2c7d8098c1619fa46055d1beebb9ff`.
+CPU evidence confirmed ComfyUI 0.34.0, PyTorch 2.11.0+cu128, all required H3/Motion Context/core nodes, the SigmaShift input schema and the real Motion Context layout contract. No generation was submitted.
+The inherited production dependency check reports one pre-existing conflict: `diffusers 0.40.0` requires `huggingface-hub>=1.23.0,<2.0`, while the production image has `huggingface-hub 0.36.2`. The candidate did not change or mask this state; it is not an add-on install failure and must not be “fixed” by altering production dependencies without a separate investigation.
+The CPU contract does not prove quantised LoRA application, video/audio quality, GPU startup, Safari playback or cost. The official Turbo LoRA is not downloaded.
 
 ## Further validation sequence
-1. Build candidate without replacing any live tag; inspect startup and ComfyUI node schemas/layout against the inherited image.
+1. Completed: candidate built under a unique development tag without replacing any live tag; startup, node schemas and layout were checked against the inherited image.
 2. Read exact installed LoRA files and remaining volume capacity. Verify source/hash/size before any single necessary download; never overwrite existing files.
 3. Explain expected paid GPU time/cost and obtain approval BEFORE any RunPod generation tests or production endpoint/image switch.
 4. Test Motion Context on normal 20-step Ref2VA independently (initial + continuation), then Turbo Ref2VA separately. Compare same assets, prompt, seed, duration and resolution to the unchanged baseline.
