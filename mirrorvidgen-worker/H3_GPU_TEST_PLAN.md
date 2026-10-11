@@ -1,3 +1,18 @@
+# H3 GPU test plan
+
+## 2026-10-11: user-approved Turbo-only comparison
+
+The user explicitly approved a maximum of **$5 USD** for installing and comparing Turbo. This supersedes the earlier unapproved Stage 1 proposal only for two independent Ref2VA jobs: Normal Quality and official four-step Turbo, identical reference image, prompt, seed 42, requested five-second duration, 480p and 24 fps. Motion Context and combined tests are excluded.
+
+RunPod console verification: existing model volume is 200 GB in US-IL-1. RTX 6000 Ada was out of capacity there. One isolated L40S 48 GB was available at $1.09/hour, plus displayed 30 GB container-disk rate $0.004/hour. The production endpoint, GPU configuration, image and original weights must remain unchanged. This tests both configurations on the same temporary GPU; it does not establish RTX 6000 Ada absolute timings.
+
+Candidate comparison image: h3-addons-7f5a358e3b920bb91d477e4a88f271d5daf031e0, pending successful build/CPU checks. Its opt-in runner requires MIRRORVIDGEN_APPROVED_TURBO_COMPARE=5USD, rejects missing base weights/insufficient storage, verifies the official LoRA SHA256 and never overwrites an existing download target. Startup command is bounded to 7800 seconds for the whole runner. At $1.094/hour this bounds runner time to about $2.37, leaving headroom for image pull and prompt Pod termination within the $5 overall ceiling. This process timeout is confined to the test Pod and does not modify production generation timeouts. A process timeout is not a provider billing cap: monitor total Pod time and terminate the temporary Pod promptly on completion/error.
+
+No new endpoint, persistent volume or storage expansion. Public documentation reference asset: https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/guitar-man.png . Preserve MP4s, ffprobe/decode evidence, timing and contact sheets under a separate h3-turbo-tests result directory. Visually inspect both outputs and audio before enabling anything for real users. Do not claim equal quality or speed from CPU validation.
+
+
+## Earlier proposal (historical; broader stages remain unapproved)
+
 # Isolated H3 GPU test proposal — approval required
 
 No paid GPU test, model download, production deployment or endpoint change has been performed.
