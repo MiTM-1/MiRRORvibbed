@@ -83,3 +83,20 @@ Upstream sources:
 https://github.com/NikoDemon80/ComfyUI-H3-Motion-Context/tree/5335715abe54c1a9bfbe3494da29aae3e8635ce3
 https://github.com/ModelTC/Minimax-H3-Turbo/tree/02e26d591f7a04d5d1a074c9566d5dd4f22f6225
 
+
+
+## 2026-10-11 approved Turbo comparison preparation
+
+User approved a maximum $5 USD for installing/comparing Turbo. Added an opt-in isolated comparison runner, download/checksum/non-overwrite tests, and CI coverage. No live app changes or production worker changes were made.
+
+Image built and CPU checks passed: `ghcr.io/mitm-1/mirrorvidgen-worker:h3-addons-7f5a358e3b920bb91d477e4a88f271d5daf031e0`
+
+Digest: `sha256:e575065ed15288a764e620c85a8ad9fa87493790daa78bb5b65812f8539a780d`
+
+Build run: https://github.com/MiTM-1/MiRRORvibbed/actions/runs/38154733696 . Unpaid graph/recovery and four comparison safety tests passed in run https://github.com/MiTM-1/MiRRORvibbed/actions/runs/38154947821 . Real ComfyUI CPU layout and add-on schema contracts passed. This remains CPU evidence, not INT8 GPU LoRA/output validation.
+
+Read-only production console check confirmed endpoint r5xypdhn4sgccs still uses original image 7b21b2c015b21a512498cdcaa357da4720208cad and mirrorvidgen-models network volume. No active or queued jobs at inspection.
+
+GPU launch blocked by RunPod capacity. RTX 6000 Ada was unavailable in US-IL-1. L40S 48 GB initially available at $1.09/hour plus $0.004/hour container disk became unavailable during image build. After validation every GPU card for the attached existing volume reported Out of capacity. The Deploy button opened the automatic-subscription dialog; it was cancelled without subscribing. No Pod created, no GPU generation or LoRA download performed, $0 of approved GPU budget spent. Do not automatically launch an unmonitored resource or switch production to bypass this blocker.
+
+Next step: when an isolated compatible GPU is available with the existing volume, run the same two Normal/Turbo inputs within the retained $5 authorization, inspect actual MP4/audio and timing, and terminate the Pod promptly. Turbo remains unverified and unavailable in production; no speed/quality claim yet.
