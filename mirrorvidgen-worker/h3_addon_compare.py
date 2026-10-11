@@ -66,7 +66,7 @@ def main():
     (output / "inputs.json").write_text(json.dumps({k:v for k,v in data.items() if k != "reference_images"}, indent=2))
     report = {"run_id": run_id, "lora_sha256": SHA, "tests": [], "production_unchanged": True}
     started = time.monotonic()
-    proc = subprocess.Popen(["/opt/venv/bin/python", "-u", "/comfyui/main.py", "--listen", "0.0.0.0", "--port", "8188"], cwd="/comfyui")
+    proc = subprocess.Popen(["/opt/venv/bin/python", "-u", "/comfyui/main.py", "--listen", "127.0.0.1", "--port", "8188"], cwd="/comfyui")
     try:
         baseline.wait_for_comfy()
         report["startup_seconds"] = time.monotonic() - started
