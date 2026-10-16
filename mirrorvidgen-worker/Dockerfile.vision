@@ -7,7 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-co
 RUN cp /handler.py /h3_addon_handler_existing.py
 COPY audio_features.py /audio_features.py
 COPY mirrorvision_renderer.py /mirrorvision_renderer.py
-COPY mirrorvision_dispatch.py /handler.py
+COPY mirrorvision_dispatch.py /mirrorvision_dispatch.py
+RUN cp /mirrorvision_dispatch.py /handler.py
 COPY mirrorvision_cpu_check.py /mirrorvision_cpu_check.py
 
 RUN /opt/venv/bin/python -m py_compile /handler.py /mirrorvision_renderer.py /audio_features.py /mirrorvision_cpu_check.py
