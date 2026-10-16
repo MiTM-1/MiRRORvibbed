@@ -176,9 +176,9 @@ def render(plan, audio, images, clips, output):
                 # No semantic subject verifier is installed. Quarantine generated pixels
                 # whenever original artwork exists rather than claiming they were checked.
                 if footage and not pictures:
-                    sequence = footage[min(len(footage)-1, int(progress*len(footage)))]
+                    sequence = footage[min(len(footage)-1, scene_index)]
                     if sequence:
-                        shot = Image.open(sequence[min(len(sequence)-1, frame % max(1, len(sequence)))]).convert('RGB')
+                        shot = Image.open(sequence[min(len(sequence)-1, max(0, round((t-float(scenes[scene_index].get('start',0)))*FPS)))]).convert('RGB')
                         base = Image.blend(base, shot, .93)
                 elif footage and pictures:
                     # Generated footage is permitted only as an abstract light field over supplied
