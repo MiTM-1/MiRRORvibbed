@@ -72,6 +72,46 @@ def draw_text(text, size, width):
         draw.text((width / 2, i * size * 1.38), line, font=font, anchor='mt', fill=(249, 235, 208), stroke_width=1, stroke_fill=(27, 22, 26))
     return layer
 
+def measured_regions(picture):
+    """Connected saturated colour regions; no object/subject labels are inferred."""
+    small=picture.resize((48,48)).convert('HSV'); seen=set(); found=[]
+    for y in range(48):
+        for x in range(48):
+            if (x,y) in seen: continue
+            hue,sat,value=small.getpixel((x,y))
+            if sat<110 or value<65: continue
+            todo=[(x,y)];seen.add((x,y));points=[]
+            while todo:
+                px,py=todo.pop();points.append((px,py))
+                for nx,ny in ((px-1,py),(px+1,py),(px,py-1),(px,py+1)):
+                    if not (0<=nx<48 and 0<=ny<48) or (nx,ny) in seen: continue
+                    nh,ns,nv=small.getpixel((nx,ny));delta=abs(nh-hue)
+                    if ns>=110 and nv>=65 and min(delta,256-delta)<20:
+                        seen.add((nx,ny));todo.append((nx,ny))
+            if 8<=len(points)<=1000:
+                found.append((len(points),min(a for a,b in points),min(b for a,b in points),max(a for a,b in points)+1,max(b for a,b in points)+1))
+    return [tuple(round(v/48*picture.size[i%2]) for i,v in enumerate(item[1:])) for item in sorted(found,reverse=True)[:4]]
+
+def regional_motion(picture, regions, bass):
+    # Radial source-coordinate warp, smoothly zero at each region's boundary.
+    # No generated pixels, semantic masks, or invented objects.
+    if not regions or bass<.001: return picture
+    w,h=picture.size; mesh=[];step=24
+    def source(x,y):
+        dx=dy=0.
+        for left,top,right,bottom in regions:
+            cx=(left+right)/2;cy=(top+bottom)/2;rx=max(12,(right-left)*.65);ry=max(12,(bottom-top)*.65)
+            distance=((x-cx)/rx)**2+((y-cy)/ry)**2
+            strength=.055*bass*max(0,1-distance)**2
+            dx+=(cx-x)*strength;dy+=(cy-y)*strength
+        return (max(0,min(w,x+dx)),max(0,min(h,y+dy)))
+    for y in range(0,h,step):
+        for x in range(0,w,step):
+            right=min(w,x+step);bottom=min(h,y+step)
+            quad=(*source(x,y),*source(x,bottom),*source(right,bottom),*source(right,y))
+            mesh.append(((x,y,right,bottom),quad))
+    return picture.transform((w,h),Image.Transform.MESH,mesh,Image.Resampling.BICUBIC)
+
 def render(plan, audio, images, clips, output):
     validate(plan, images, clips)
     w, h = dimensions(plan['aspect']); duration = plan['duration']
@@ -83,6 +123,7 @@ def render(plan, audio, images, clips, output):
     transitions = sorted(set([0., duration] + [float(v) for v in changes if 0 < v < duration] + [float(v) for v in beats[::8] if 0 < v < duration]))
     if len(transitions) < 3: transitions = [duration * i / 4 for i in range(5)]
     pictures = [ImageOps.pad(Image.open(path).convert('RGB'), (w, h), color=(8,10,17)) for path in images]
+    regions = [measured_regions(picture) for picture in pictures]
     rng = random.Random(42)
     particles = [(rng.random(), rng.random(), rng.random(), rng.uniform(.3, 1.)) for _ in range(70)]
     # This is measured palette extraction, not semantic image/object analysis.
@@ -117,7 +158,8 @@ def render(plan, audio, images, clips, output):
                 bass = feature_at(features, 'bass', t); highs = feature_at(features, 'highs', t)
                 base = Image.new('RGB', (w, h), (8, 10, 17))
                 if pictures:
-                    pic = pictures[section % len(pictures)]
+                    picture_index=section % len(pictures)
+                    pic = regional_motion(pictures[picture_index], regions[picture_index], bass)
                     # Preserve all original subjects, lettering and composition from frame one.
                     from PIL import ImageEnhance
                     base = ImageEnhance.Brightness(pic).enhance(.94 + .12*bass)
