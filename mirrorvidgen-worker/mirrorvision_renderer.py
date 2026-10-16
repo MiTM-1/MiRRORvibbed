@@ -3,7 +3,7 @@ Requires FFmpeg + Pillow + a licensed DejaVu Sans font. No browser or GPU.
 Run locally: python mirrorvision_renderer.py manifest.json output.mp4
 The worker entry point is handle(input); it only accepts mirrorvision_render.
 """
-import json, math, os, random, subprocess, tempfile, time, urllib.error, urllib.request
+import json, math, os, random, re, subprocess, tempfile, time, urllib.error, urllib.request
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops
 import importlib.util
@@ -73,15 +73,26 @@ def draw_text(text, size, width):
     for char in text:
         if not char.isspace() and bytes(font.getmask(char)) == missing:
             raise ValueError('The installed font cannot render a supplied character: '+repr(char))
-    # Greedy wrapping preserves every character, including punctuation/capitalization.
-    lines, current = [], ''
-    for char in text:
-        if char == '\n':
-            lines.append(current); current = ''; continue
-        if font.getlength(current + char) > width and current:
-            lines.append(current); current = ''
-        current += char
-    lines.append(current)
+    # Prefer word boundaries so exact phrases never split into awkward orphan
+    # letters. Only a single word wider than the safe area falls back to
+    # character wrapping; punctuation and capitalization are preserved.
+    lines = []
+    for paragraph in text.split('\n'):
+        if not paragraph:
+            lines.append(''); continue
+        current = ''
+        for token in re.findall(r'\S+\s*', paragraph):
+            candidate = current + token
+            if current and font.getlength(candidate.rstrip()) > width:
+                lines.append(current.rstrip()); current = token.lstrip()
+            else:
+                current = candidate
+            while current and font.getlength(current.rstrip()) > width:
+                cut = 1
+                while cut < len(current) and font.getlength(current[:cut + 1]) <= width:
+                    cut += 1
+                lines.append(current[:cut].rstrip()); current = current[cut:].lstrip()
+        lines.append(current.rstrip())
     h = int(len(lines) * size * 1.38 + size)
     layer = Image.new('RGBA', (width, h))
     draw = ImageDraw.Draw(layer)
@@ -152,6 +163,11 @@ def render(plan, audio, images, clips, output):
     for text in words:
         size = max(22, int(w * .105))
         layer = draw_text(text, size, int(w * .82))
+        # A compact title reads better as one deliberately scaled line than as
+        # a near-fit with one or two orphaned letters on a second line.
+        if '\n' not in text and len(text) <= 36:
+            while layer.height > size * 2.5 and size > 22:
+                size -= 2; layer = draw_text(text, size, int(w * .82))
         while layer.height > h * .55 and size > 12:
             size -= 2; layer = draw_text(text, size, int(w * .82))
         if layer.height > h*.55:
