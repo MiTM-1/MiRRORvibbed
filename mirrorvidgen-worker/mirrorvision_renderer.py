@@ -140,6 +140,12 @@ def render(plan, audio, images, clips, output):
         if layer.height > h*.55:
             raise ValueError('This phrase is too long for safe readable typography. Shorten the phrase or split it into separate lines.')
         text_layers.append(layer)
+    text_times=[0.]
+    for index in range(1,len(text_layers)):
+        target=duration*index/len(text_layers)
+        candidates=[v for v in onsets if abs(v-target)<=.35 and v>text_times[-1]+.4 and v<duration-.6]
+        text_times.append(min(candidates,key=lambda v:abs(v-target)) if candidates else target)
+    text_times.append(float(duration))
     with tempfile.TemporaryDirectory() as temp:
         footage = []
         for i, clip in enumerate(clips):
@@ -219,8 +225,8 @@ def render(plan, audio, images, clips, output):
                 vignette=vignette.filter(ImageFilter.GaussianBlur(max(12,int(min(w,h)*.11))))
                 base = Image.composite(base, Image.new('RGB',(w,h),(3,4,8)), vignette)
                 if text_layers:
-                    at = min(len(text_layers)-1, int(progress*len(text_layers)))
-                    local = progress*len(text_layers)-at
+                    at = max(i for i,v in enumerate(text_times[:-1]) if v<=t)
+                    local = (t-text_times[at])/max(.001,text_times[at+1]-text_times[at])
                     layer = text_layers[at].copy()
                     # Each exact glyph raster is revealed through a sharp moving light mask.
                     alpha = layer.getchannel('A'); mask = Image.new('L', layer.size)
