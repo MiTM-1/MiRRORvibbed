@@ -3,7 +3,7 @@ Requires FFmpeg + Pillow + a licensed DejaVu Sans font. No browser or GPU.
 Run locally: python mirrorvision_renderer.py manifest.json output.mp4
 The worker entry point is handle(input); it only accepts mirrorvision_render.
 """
-import json, math, os, random, subprocess, tempfile, urllib.request
+import json, math, os, random, subprocess, tempfile, time, urllib.error, urllib.request
 from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops
 import importlib.util
@@ -14,6 +14,23 @@ analyse, feature_at = _audio.analyse, _audio.at
 FONT = os.environ.get('MIRRORVISION_FONT', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
 FPS = 24
 HTTP_HEADERS = {'User-Agent': 'MiRRORvidgen-Worker/1.0'}
+
+def upload_result(url, data):
+    """Retry only transient callback races; never report a render as complete
+    until the durable Site store has accepted the exact MP4 bytes."""
+    for attempt in range(8):
+        request=urllib.request.Request(url,data=data,headers={**HTTP_HEADERS, 'Content-Type':'video/mp4'},method='POST')
+        try:
+            with urllib.request.urlopen(request,timeout=180) as response:
+                if response.status==200: return
+                raise RuntimeError(f'Final storage rejected upload (HTTP {response.status})')
+        except urllib.error.HTTPError as error:
+            detail=error.read(1024).decode('utf-8','replace')
+            transient=error.code in (409,429,500,502,503,504) or (
+                error.code==422 and 'processing an update' in detail.lower())
+            if not transient or attempt==7:
+                raise RuntimeError(f'Final storage rejected upload (HTTP {error.code})') from error
+            time.sleep(min(8, .5 * (2 ** attempt)))
 
 def run(args):
     subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', *args], check=True, timeout=1800)
@@ -275,9 +292,7 @@ def handle(payload):
                 path=str(root/f'{key}-{i}');download(url,path);group.append(path)
         output=str(root/'final.mp4');render(payload['plan'],audio,images,clips,output)
         data=Path(output).read_bytes()
-        request=urllib.request.Request(output_url,data=data,headers={**HTTP_HEADERS, 'Content-Type':'video/mp4'},method='POST')
-        with urllib.request.urlopen(request,timeout=180) as response:
-            if response.status!=200: raise RuntimeError('Final storage rejected upload')
+        upload_result(output_url,data)
         return {'rendererVersion':1,'uploaded':True,'analysis':{
             'method': features.get('method') if (features:=analyse(audio, payload['plan']['duration'])) else None,
             'detectedBpm': features.get('detectedBpm'),
@@ -289,3 +304,4 @@ if __name__=='__main__':
     import sys
     manifest=json.loads(Path(sys.argv[1]).read_text())
     render(manifest['plan'],manifest['audio'],manifest.get('images',[]),manifest.get('clips',[]),sys.argv[2])
+

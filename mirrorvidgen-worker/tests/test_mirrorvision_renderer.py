@@ -1,6 +1,7 @@
 """Real CPU media tests. No network, paid jobs, or synthetic claims of H3 output."""
-import importlib.util, json, math, subprocess, tempfile, wave, struct
+import importlib.util, io, json, math, subprocess, tempfile, urllib.error, wave, struct
 from pathlib import Path
+from unittest.mock import patch
 from PIL import Image
 spec=importlib.util.spec_from_file_location('renderer','mirrorvidgen-worker/mirrorvision_renderer.py')
 r=importlib.util.module_from_spec(spec);spec.loader.exec_module(r)
@@ -59,3 +60,17 @@ with tempfile.TemporaryDirectory() as temp:
  found=subprocess.check_output(['tesseract',str(path),'stdout','--psm','6'],stderr=subprocess.DEVNULL).decode()
  assert 'MiTM' in found and 'COMING SOON!' in found,found
  print('PASS exact raster typography OCR; no model-generated letters',flush=True)
+ attempts=[]
+ class Accepted:
+  status=200
+  def __enter__(self): return self
+  def __exit__(self,*_): pass
+ def callback(request,**_):
+  attempts.append(request)
+  if len(attempts)==1:
+   raise urllib.error.HTTPError(request.full_url,503,'busy',{},io.BytesIO(b'{"message":"This music project is processing an update. Please retry shortly."}'))
+  return Accepted()
+ with patch.object(r.urllib.request,'urlopen',callback), patch.object(r.time,'sleep',lambda _:None):
+  r.upload_result('https://mirrorvidgen.mitm1.chatgpt.site/api/music-react/fixture/render-output',b'video')
+ assert len(attempts)==2
+ print('PASS durable MP4 callback retries the transient Site update-lock race',flush=True)
