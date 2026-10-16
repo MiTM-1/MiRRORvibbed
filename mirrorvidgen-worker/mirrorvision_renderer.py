@@ -13,6 +13,7 @@ analyse, feature_at = _audio.analyse, _audio.at
 
 FONT = os.environ.get('MIRRORVISION_FONT', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
 FPS = 24
+HTTP_HEADERS = {'User-Agent': 'MiRRORvidgen-Worker/1.0'}
 
 def run(args):
     subprocess.run(['ffmpeg', '-hide_banner', '-loglevel', 'error', '-y', *args], check=True, timeout=1800)
@@ -188,7 +189,7 @@ def handle(payload):
         # Do not follow redirects to arbitrary hosts.
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *args): return None
-        with urllib.request.build_opener(NoRedirect).open(url, timeout=90) as response, open(path, 'wb') as dest:
+        with urllib.request.build_opener(NoRedirect).open(urllib.request.Request(url, headers=HTTP_HEADERS), timeout=90) as response, open(path, 'wb') as dest:
             size=0
             while chunk:=response.read(1024*1024):
                 size+=len(chunk)
@@ -202,7 +203,7 @@ def handle(payload):
                 path=str(root/f'{key}-{i}');download(url,path);group.append(path)
         output=str(root/'final.mp4');render(payload['plan'],audio,images,clips,output)
         data=Path(output).read_bytes()
-        request=urllib.request.Request(output_url,data=data,headers={'Content-Type':'video/mp4'},method='POST')
+        request=urllib.request.Request(output_url,data=data,headers={**HTTP_HEADERS, 'Content-Type':'video/mp4'},method='POST')
         with urllib.request.urlopen(request,timeout=180) as response:
             if response.status!=200: raise RuntimeError('Final storage rejected upload')
         return {'rendererVersion':1,'uploaded':True,'analysis':{

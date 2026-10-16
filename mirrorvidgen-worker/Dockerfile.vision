@@ -12,5 +12,6 @@ RUN cp /mirrorvision_dispatch.py /handler.py
 COPY mirrorvision_cpu_check.py /mirrorvision_cpu_check.py
 
 RUN /opt/venv/bin/python -m py_compile /handler.py /mirrorvision_renderer.py /audio_features.py /mirrorvision_cpu_check.py
+RUN CUDA_VISIBLE_DEVICES= /opt/venv/bin/python /mirrorvision_cpu_check.py
 ENV MIRRORVISION_SITE_ORIGIN=https://mirrorvidgen.mitm1.chatgpt.site
 
