@@ -1,0 +1,21 @@
+name: Check RunPod deployment access
+on:
+  push:
+    branches: [dev/mirrorvision-native-v1-20261016]
+    paths: ['.github/workflows/check-runpod-access.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  access:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report secret availability without exposing values
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+        run: |
+          if [ -n "$RUNPOD_API_KEY" ]; then
+            echo "RUNPOD_API_KEY_PRESENT=true"
+          else
+            echo "RUNPOD_API_KEY_PRESENT=false"
+          fi
