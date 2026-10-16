@@ -24,7 +24,8 @@ def main():
     vision = probe["capabilities"]["mirrorvision"]
     assert probe["capabilities"]["mirrorromax_h3"]["available"] is True
     assert vision["rendererVersion"] == 1 and vision["native2d"] is True
-    assert vision["advanced3d"] is False and vision["previousFrameConditioning"] is False
+    assert vision["advanced3d"] is False and vision["previousFrameConditioning"] is True
+    assert vision["previousFrameMechanism"] == "decoded-final-frame-reference"
     subprocess.run([sys.executable, "-m", "py_compile", "/handler.py", "/mirrorvision_renderer.py", "/audio_features.py"], check=True)
     import mirrorvision_renderer as renderer
     renderer.dimensions = lambda _: (320, 180)

@@ -75,17 +75,6 @@ def draw_text(text, size, width):
 def render(plan, audio, images, clips, output):
     validate(plan, images, clips)
     w, h = dimensions(plan['aspect']); duration = plan['duration']
-    if plan['mode'] == 'Full Music Video':
-        with tempfile.TemporaryDirectory() as temp:
-            paths = []
-            for i, scene in enumerate(plan['scenes']):
-                path = str(Path(temp) / f'{i}.mp4'); paths.append(path)
-                run(['-i', clips[i], '-an', '-vf', f'scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=24,tpad=stop_mode=clone:stop_duration=15', '-frames:v', str(round(scene['end'] * FPS)-round(scene['start'] * FPS)), '-c:v', 'libx264', '-preset', 'fast', '-pix_fmt', 'yuv420p', path])
-            listing = Path(temp) / 'clips.txt'
-            listing.write_text('\n'.join(f"file '{p}'" for p in paths))
-            run(['-f', 'concat', '-safe', '0', '-i', str(listing), '-i', audio, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k', '-t', str(duration), '-movflags', '+faststart', output])
-        verify(output, duration)
-        return
     features = analyse(audio, duration)
     # Persist measured render evidence beside the output for local QA; never log asset URLs.
     Path(str(output)+'.analysis.json').write_text(json.dumps(features))
@@ -121,6 +110,8 @@ def render(plan, audio, images, clips, output):
             for frame in range(round(duration * FPS)):
                 t = frame / FPS; progress = t / duration
                 section = max(i for i, v in enumerate(transitions[:-1]) if v <= t)
+                scenes = plan.get('scenes') or [{'start':0,'end':duration}]
+                scene_index = max(i for i, scene in enumerate(scenes) if float(scene.get('start',0)) <= t)
                 pulse = max([max(0., 1 - (t-b)*9) for b in onsets + beats if 0 <= t-b < .12] or [0.])
                 level = feature_at(features, 'envelope', t)
                 bass = feature_at(features, 'bass', t); highs = feature_at(features, 'highs', t)
@@ -130,13 +121,36 @@ def render(plan, audio, images, clips, output):
                     # Preserve all original subjects, lettering and composition from frame one.
                     from PIL import ImageEnhance
                     base = ImageEnhance.Brightness(pic).enhance(.94 + .12*bass)
+                    # A restrained breathing camera move keeps the complete source art in view.
+                    # It is composited over a blurred full-frame plate so no edge content is lost.
+                    drift = .004 + .008*level
+                    zoom = 1 + drift*(.5+.5*math.sin(t*.31))
+                    scaled = pic.resize((math.ceil(w*zoom), math.ceil(h*zoom)), Image.Resampling.LANCZOS)
+                    x = (scaled.width-w)//2 + round(math.sin(t*.23)*w*.004)
+                    y = (scaled.height-h)//2 + round(math.cos(t*.19)*h*.004)
+                    moving = scaled.crop((x,y,x+w,y+h))
+                    plate = pic.filter(ImageFilter.GaussianBlur(max(2, int(min(w,h)*.012))))
+                    base = Image.blend(plate, ImageEnhance.Brightness(moving).enhance(.94+.12*bass), .94)
                 # No semantic subject verifier is installed. Quarantine generated pixels
                 # whenever original artwork exists rather than claiming they were checked.
-                if footage and not pictures and section % 2 == 0:
+                if footage and not pictures:
                     sequence = footage[min(len(footage)-1, int(progress*len(footage)))]
                     if sequence:
                         shot = Image.open(sequence[min(len(sequence)-1, frame % max(1, len(sequence)))]).convert('RGB')
                         base = Image.blend(base, shot, .93)
+                elif footage and pictures:
+                    # Generated footage is permitted only as an abstract light field over supplied
+                    # artwork. Heavy blur + monochrome colourisation prevents generated subjects
+                    # (including unrelated people) from entering the finished composition.
+                    sequence = footage[min(len(footage)-1, scene_index)]
+                    if sequence:
+                        local_start = float(scenes[scene_index].get('start',0))
+                        local_frame = max(0, round((t-local_start)*FPS))
+                        shot = Image.open(sequence[min(len(sequence)-1, local_frame)]).convert('L')
+                        shot = shot.filter(ImageFilter.GaussianBlur(max(18, int(min(w,h)*.055))))
+                        field = ImageOps.colorize(shot, black=(0,0,0), white=palette)
+                        field = ImageEnhance.Contrast(field).enhance(.58)
+                        base = Image.blend(base, ImageChops.screen(base, field), .025+.045*level)
                 glow = Image.new('RGB', (w, h)); gd = ImageDraw.Draw(glow)
                 # Perspective-projected light rays and particles use real beat/onset impulses.
                 for j in range(9):
@@ -151,6 +165,17 @@ def render(plan, audio, images, clips, output):
                     gd.ellipse((px-radius, py-radius, px+radius, py+radius), fill=tuple(int(c*highs) for c in palette))
                 base = Image.blend(base, ImageChops.add(base, glow.filter(ImageFilter.GaussianBlur(5))), .06*level)
                 base = Image.blend(base, ImageChops.add(base, glow), .05*pulse)
+                # Cinematic 2D finish: music-linked bloom, moving highlight and vignette.
+                bloom = base.filter(ImageFilter.GaussianBlur(max(2, int(min(w,h)*.008))))
+                base = Image.blend(base, ImageChops.screen(base, bloom), .018+.035*level)
+                sheen = Image.new('RGB',(w,h)); sd=ImageDraw.Draw(sheen)
+                sx = int(((t/max(.001,duration))*1.4-.2)*w)
+                sd.polygon([(sx-int(w*.22),h),(sx-int(w*.07),0),(sx+int(w*.07),0),(sx+int(w*.22),h)],fill=tuple(min(255,int(c*(.18+.3*highs))) for c in palette))
+                base = Image.blend(base, ImageChops.screen(base,sheen.filter(ImageFilter.GaussianBlur(max(8,int(w*.035))))), .02+.035*highs)
+                vignette = Image.new('L',(w,h)); vd=ImageDraw.Draw(vignette)
+                vd.ellipse((-w*.12,-h*.08,w*1.12,h*1.08),fill=255)
+                vignette=vignette.filter(ImageFilter.GaussianBlur(max(12,int(min(w,h)*.11))))
+                base = Image.composite(base, Image.new('RGB',(w,h),(3,4,8)), vignette)
                 if text_layers:
                     at = min(len(text_layers)-1, int(progress*len(text_layers)))
                     local = progress*len(text_layers)-at

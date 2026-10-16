@@ -18,14 +18,15 @@ with tempfile.TemporaryDirectory() as temp:
  for color in ['red','blue']:
   path=root/(color+'.mp4');r.run(['-f','lavfi','-i',f'color={color}:s=320x180:r=24:d=15','-c:v','libx264','-pix_fmt','yuv420p',str(path)]);clips.append(str(path))
  boundary=root/'boundary.png';r.extract_boundary(clips[0],str(boundary));assert Image.open(boundary).getpixel((100,100))[0]>200
- print('PASS exact final-frame extraction helper (not yet connected to H3 conditioning)',flush=True)
+ print('PASS exact final-frame extraction helper for chained H3 reference conditioning',flush=True)
  for name,mode,duration,images,words,footage in [
   ('A-image-only','Mystery Teaser',15,[str(image)],[],[]),
   ('B-exact-words','Mystery Teaser',5,[],['MiTM','COMING SOON!'],[]),
   ('C-image-reveal','Mystery Teaser',10,[str(image)],['MiTM','The Reveal','23 October'],[]),
   ('D-hybrid','Hybrid Music Video',15,[str(image)],[],[clips[0]]),
   ('E-full-one','Full Music Video',15,[str(image)],[],[clips[0]]),
-  ('F-full-two','Full Music Video',30,[str(image)],[],clips),
+  ('F-full-two-order','Full Music Video',30,[],[],clips),
+  ('G-full-two-source','Full Music Video',30,[str(image)],[],clips),
  ]:
   plan={'mode':mode,'duration':duration,'aspect':'16:9','ordered':True,'words':words,'audio':{'bpm':120,'beats':[i*.5 for i in range(duration*2)],'onsets':[i*.5 for i in range(duration*2)],'energy':[.4]*(duration*10),'changes':[duration*.5]},'scenes':[{'start':i*15,'end':min(duration,(i+1)*15)} for i in range(math.ceil(duration/15))]}
   output=root/(name+'.mp4');r.render(plan,str(audio),images,footage,str(output))
@@ -36,18 +37,18 @@ with tempfile.TemporaryDirectory() as temp:
   values=struct.unpack('<'+'h'*(len(pcm)//2),pcm)
   crossings=sum(a<=0<b for a,b in zip(values[12000:23999],values[12001:24000]))
   assert abs(crossings-660)<5,(name,crossings)
-  if name=='F-full-two':
+  if name=='F-full-two-order':
    for at,channel in [(5,0),(20,2)]:
     pixel=subprocess.check_output(['ffmpeg','-v','error','-ss',str(at),'-i',str(output),'-frames:v','1','-vf','scale=1:1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'])
     assert pixel[channel]>150,(at,list(pixel))
-  if name=='D-hybrid':
+  if name in ('D-hybrid','G-full-two-source'):
    # Red unverified footage must never replace the supplied blue artwork.
    for when in [0,1,5,10]:
     pixel=subprocess.check_output(['ffmpeg','-v','error','-ss',str(when),'-i',str(output),'-frames:v','1','-vf','scale=1:1','-f','rawvideo','-pix_fmt','rgb24','pipe:1'])
     assert pixel[2]>pixel[0]*2 and pixel[2]>90,(when,list(pixel))
    measured=json.loads(Path(str(output)+'.analysis.json').read_text())
    assert measured['decodedPcmSha256'] and measured['hopSeconds']==.01
-   # Two different compositing branches: actual footage and native VFX.
+   # The moving compositor must produce distinct frames while source colours remain dominant.
    a=subprocess.check_output(['ffmpeg','-v','error','-ss','1','-i',str(output),'-frames:v','1','-f','md5','pipe:1'])
    b=subprocess.check_output(['ffmpeg','-v','error','-ss','5','-i',str(output),'-frames:v','1','-f','md5','pipe:1'])
    assert a!=b
