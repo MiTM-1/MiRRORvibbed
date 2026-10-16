@@ -1,0 +1,56 @@
+name: Build isolated MiRRORvision candidate
+on:
+  push:
+    branches: [dev/mirrorvision-native-v1-20261016]
+    paths:
+      - '.github/workflows/build-mirrorvision-candidate.yml'
+      - 'mirrorvidgen-worker/Dockerfile.vision'
+      - 'mirrorvidgen-worker/mirrorvision_*.py'
+      - 'mirrorvidgen-worker/audio_features.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    if: github.ref == 'refs/heads/dev/mirrorvision-native-v1-20261016'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room for inherited worker image
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        id: candidate
+        with:
+          context: ./mirrorvidgen-worker
+          file: ./mirrorvidgen-worker/Dockerfile.vision
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/mitm-1/mirrorvidgen-worker:mirrorvision-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/MiTM-1/MiRRORvibbed
+            org.opencontainers.image.description=Additive MiRRORvision CPU renderer over verified H3 add-ons image
+      - name: Release build cache before validation
+        run: docker buildx prune -af
+      - name: Verify additive dispatcher without paid generation
+        env:
+          IMAGE: ghcr.io/mitm-1/mirrorvidgen-worker@${{ steps.candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          docker run --rm --entrypoint /opt/venv/bin/python -e CUDA_VISIBLE_DEVICES= "$IMAGE" /mirrorvision_cpu_check.py | tee mirrorvision-cpu-report.log
+      - name: Save validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mirrorvision-cpu-evidence
+          path: mirrorvision-cpu-report.log
