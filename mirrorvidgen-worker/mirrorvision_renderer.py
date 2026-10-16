@@ -5,7 +5,7 @@ The worker entry point is handle(input); it only accepts mirrorvision_render.
 """
 import json, math, os, random, subprocess, tempfile, urllib.request
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops
 import importlib.util
 _spec = importlib.util.spec_from_file_location('mirrorvision_audio', Path(__file__).with_name('audio_features.py'))
 _audio = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_audio)
@@ -149,8 +149,8 @@ def render(plan, audio, images, clips, output):
                     px = w/2 + (x-.5)*w/depth; py = h/2+(y-.5)*h/depth
                     radius = 1 + highs*2
                     gd.ellipse((px-radius, py-radius, px+radius, py+radius), fill=tuple(int(c*highs) for c in palette))
-                base = Image.blend(base, glow.filter(ImageFilter.GaussianBlur(5)), .06*level)
-                base = Image.blend(base, glow, .05*pulse)
+                base = Image.blend(base, ImageChops.add(base, glow.filter(ImageFilter.GaussianBlur(5))), .06*level)
+                base = Image.blend(base, ImageChops.add(base, glow), .05*pulse)
                 if text_layers:
                     at = min(len(text_layers)-1, int(progress*len(text_layers)))
                     local = progress*len(text_layers)-at
@@ -158,7 +158,6 @@ def render(plan, audio, images, clips, output):
                     # Each exact glyph raster is revealed through a sharp moving light mask.
                     alpha = layer.getchannel('A'); mask = Image.new('L', layer.size)
                     ImageDraw.Draw(mask).rectangle((0, 0, int(layer.width*min(1, local*5)), layer.height), fill=255)
-                    from PIL import ImageChops
                     layer.putalpha(ImageChops.multiply(alpha, mask))
                     base.paste(layer, ((w-layer.width)//2, int((h-layer.height)/2 + (1-min(1, local*6))*12)), layer)
                 edge = min(1., max(0., (duration-t)/.3))
