@@ -1,5 +1,5 @@
 """No-network dispatcher tests using actual final-frame extraction and mocked storage."""
-import base64, importlib.util, sys, tempfile, types
+import base64, importlib.util, io, sys, tempfile, types, urllib.error
 from pathlib import Path
 from unittest.mock import patch
 from PIL import Image
@@ -23,8 +23,17 @@ with tempfile.TemporaryDirectory() as folder:
  with patch.object(d.urllib.request,'urlopen',upload): out=d.handler(job)
  assert out['continuity_frame_stored'] is True and len(seen)==1
  pixel=Image.open(last).getpixel((32,32)); assert pixel[2]>200 and pixel[0]<20,pixel
+ calls=[]
+ def transient(request,**_):
+  calls.append(request)
+  if len(calls)==1: raise urllib.error.HTTPError(request.full_url,503,'busy',{},io.BytesIO(b'processing an update'))
+  last.write_bytes(request.data);return Response()
+ with patch.object(d.urllib.request,'urlopen',transient),patch.object(d.time,'sleep'):
+  out=d.handler(job)
+ assert out['continuity_frame_stored'] is True and len(calls)==2
  with patch.object(d.urllib.request,'urlopen',side_effect=OSError('fixture failure')):
   out=d.handler(job)
  assert out['outputs'][0]['data'] and out['continuity_frame_stored'] is False
  assert d.handler({'input':{'action':'generate'},'fixture_result':{'existing':'unchanged'}})=={'existing':'unchanged'}
  print('PASS exact decoded last frame, image callback, preserved paid result on storage failure, legacy H3 delegation; callback mocked')
+
