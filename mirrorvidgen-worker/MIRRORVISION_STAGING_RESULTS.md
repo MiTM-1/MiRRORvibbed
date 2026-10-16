@@ -46,3 +46,9 @@ Native image modes retain source pixel correlation above 0.998 at sampled frame 
 Observed account balance changed from $23.99 to $23.95 during staging tests, approximately $0.04; endpoint billing summaries lag. No $5 budget increase, new always-on worker or production GPU change was made.
 
 Rollback: production has not changed. Staging can roll back to mirrorvision-77cfd234cce519c098bff4b5a41cd4ef4196e796 for comparison, but that version has the documented visual-sync defect. Do not promote it. Production baseline and exact configuration are recorded in MIRRORVISION_DEPLOYMENT.md.
+
+## Repaired live staging verification
+Candidate 78bb897f1e927a7c15804948c4fdcbf6cac85974 passed its embedded actual-MP4 synchronization test: 0.987052 correlation.
+Image index digest: sha256:553371849c8c38cea8a4f95e0c4da4d84b6933fdf31cafb0039bcb9da0568f79.
+It was deployed ONLY to isolated staging 5dczz4dix8iai0. A new image-only Teaser was rendered, securely uploaded, then downloaded (165461 bytes). Its actual exported bass/brightness correlation is 0.98653110394004. This repairs the observed synchronization failure.
+Production remains unchanged. The outstanding Full/H3, Library, source-image and Safari acceptance gaps above still apply.
