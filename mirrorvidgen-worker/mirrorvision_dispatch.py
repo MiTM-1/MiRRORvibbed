@@ -10,6 +10,8 @@ import json
 import shutil
 import subprocess
 import tempfile
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -96,10 +98,20 @@ def _upload_boundary(result, target):
         source=Path(temp)/'section.mp4'; frame=Path(temp)/'boundary.png';source.write_bytes(video)
         extract_boundary(str(source), str(frame))
         body=frame.read_bytes()
-    request=urllib.request.Request(str(target),data=body,headers={'User-Agent':'MiRRORvidgen-Worker/1.0','Content-Type':'image/png'},method='POST')
-    with urllib.request.urlopen(request,timeout=90) as response:
-        if response.status!=200: raise RuntimeError('Continuity frame storage rejected upload')
+    for attempt in range(8):
+        request=urllib.request.Request(str(target),data=body,headers={'User-Agent':'MiRRORvidgen-Worker/1.0','Content-Type':'image/png'},method='POST')
+        try:
+            with urllib.request.urlopen(request,timeout=90) as response:
+                if response.status==200: return
+                raise RuntimeError(f'Continuity frame storage rejected upload (HTTP {response.status})')
+        except urllib.error.HTTPError as error:
+            detail=error.read(1024).decode('utf-8','replace')
+            transient=error.code in (409,429,500,502,503,504) or (
+                error.code==422 and 'processing an update' in detail.lower())
+            if not transient or attempt==7: raise
+            time.sleep(min(8, .5 * (2 ** attempt)))
 
 
 if __name__ == "__main__":
     runpod.serverless.start({"handler": handler})
+
