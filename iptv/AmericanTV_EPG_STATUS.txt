@@ -1,7 +1,7 @@
-Generated: 2026-10-16T16:41:44.124788+00:00
+Generated: 2026-10-17T04:30:37.649357+00:00
 Mapped channels: 61
-Programmes: 6390
-Programmes with titles: 6390
+Programmes: 6395
+Programmes with titles: 6395
 Programmes with descriptions: 6318
 
 Mapped IDs:
