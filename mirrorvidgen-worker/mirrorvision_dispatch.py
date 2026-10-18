@@ -19,7 +19,11 @@ import runpod
 import h3_addon_handler_existing as inherited
 from mirrorvision_renderer import handle as render, extract_boundary
 
-VERSION = 2
+# rendererVersion is the stable Site/worker contract.  Quality revisions are
+# reported separately so a cinematic renderer upgrade does not look like an
+# incompatible protocol to already-deployed Site builds.
+CONTRACT_VERSION = 1
+QUALITY_VERSION = 2
 
 
 def _healthy():
@@ -31,7 +35,8 @@ def _capabilities(result):
         return result
     capabilities = result.setdefault("capabilities", {})
     capabilities["mirrorvision"] = {
-        "rendererVersion": VERSION,
+        "rendererVersion": CONTRACT_VERSION,
+        "qualityVersion": QUALITY_VERSION,
         "native2d": True,
         "advanced3d": False,
         "serverAssembly": True,
