@@ -63,6 +63,8 @@ with tempfile.TemporaryDirectory() as temp:
  typo=r.draw_text('MiTM COMING SON!',60,1000).getchannel('A')
  assert exact.getbbox() and exact.tobytes()!=typo.tobytes()
  assert len(r.glyph_layers('MiTM COMING SOON!',60,1000,(235,72,118)))==15
+ assert r.diagonal_reveal((640,180),0).getbbox() is None
+ assert r.diagonal_reveal((640,180),1).getextrema()==(255,255)
  print('PASS exact deterministic raster typography and per-glyph kinetic sprites',flush=True)
  attempts=[]
  class Accepted:

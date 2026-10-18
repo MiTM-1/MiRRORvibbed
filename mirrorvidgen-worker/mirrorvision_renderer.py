@@ -141,6 +141,16 @@ def glyph_layers(text,size,width,palette):
         cursor+=advance
     return entries
 
+def diagonal_reveal(size,ease):
+    """Diagonal wipe which is completely empty at 0 and completely filled at 1."""
+    width,height=size;progress=max(0.,min(1.,ease))
+    if progress<=0:return Image.new('L',size)
+    if progress>=1:return Image.new('L',size,255)
+    edge=(-.25+1.5*progress)*width
+    reveal=Image.new('L',size);draw=ImageDraw.Draw(reveal)
+    draw.polygon([(0,0),(edge+width*.25,0),(edge-width*.25,height),(0,height)],fill=255)
+    return reveal
+
 def measured_regions(picture):
     """Connected saturated colour regions; no object/subject labels are inferred."""
     small=picture.resize((48,48)).convert('HSV'); seen=set(); found=[]
@@ -443,7 +453,7 @@ def render(plan, audio, images, clips, output):
                         centre=layer.width/2;half=layer.width*.58*ease
                         rd.rectangle((centre-half,0,centre+half,layer.height),fill=255)
                     elif style==1:
-                        reveal=Image.new('L',layer.size);ImageDraw.Draw(reveal).polygon([(0,layer.height),(0,layer.height*(1-ease)),(layer.width,ease*layer.height),(layer.width,layer.height)],fill=255)
+                        reveal=diagonal_reveal(layer.size,ease)
                     elif style==2:
                         reveal=Image.new('L',layer.size);ImageDraw.Draw(reveal).rectangle((0,0,layer.width*ease,layer.height),fill=255)
                     else:
