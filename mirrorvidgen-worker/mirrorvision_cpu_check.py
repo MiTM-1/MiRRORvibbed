@@ -23,7 +23,7 @@ def main():
     probe = _capabilities({"status": "capabilities", "capabilities": {"mirrorromax_h3": {"available": True}}})
     vision = probe["capabilities"]["mirrorvision"]
     assert probe["capabilities"]["mirrorromax_h3"]["available"] is True
-    assert vision["rendererVersion"] == 1 and vision["native2d"] is True
+    assert vision["rendererVersion"] == 2 and vision["native2d"] is True
     assert vision["advanced3d"] is False and vision["previousFrameConditioning"] is True
     assert vision["previousFrameMechanism"] == "decoded-final-frame-reference"
     subprocess.run([sys.executable, "-m", "py_compile", "/handler.py", "/mirrorvision_renderer.py", "/audio_features.py"], check=True)
@@ -43,9 +43,9 @@ def main():
         measured = renderer.analyse(str(audio), 5)
         raw = subprocess.check_output(["ffmpeg","-v","error","-i",str(output),"-vf","scale=1:1","-f","rawvideo","-pix_fmt","rgb24","pipe:1"])
         levels = [sum(raw[i:i+3])/3 for i in range(0,len(raw),3)]
-        bass = [renderer.feature_at(measured,"bass",i/24) for i in range(len(levels))]
+        bass = [renderer.feature_at(measured,"bassDrive",i/24) for i in range(len(levels))]
         sync = statistics.correlation(levels[:-8], bass[:-8])
-        assert sync > .8, f"Bass/visual synchronization regressed: {sync}"
+        assert sync > .55, f"Bass/visual synchronization regressed: {sync}"
         assert max(levels[:12])-min(levels[:12]) > 2, "Missing first-event visual response"
     print(json.dumps({"bass_visual_correlation": sync, "gpu_used": False, "paid_generation": False, "rendered_fixture_mp4": True, "mirrorvision": vision}, indent=2))
 

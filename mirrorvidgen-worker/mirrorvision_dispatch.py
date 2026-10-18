@@ -19,7 +19,7 @@ import runpod
 import h3_addon_handler_existing as inherited
 from mirrorvision_renderer import handle as render, extract_boundary
 
-VERSION = 1
+VERSION = 2
 
 
 def _healthy():

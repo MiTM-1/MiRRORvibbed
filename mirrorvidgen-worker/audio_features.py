@@ -1,4 +1,10 @@
-"""Measure the actual supplied trimmed soundtrack; no synthetic beat grid."""
+"""Measure the actual supplied trimmed soundtrack; no synthetic beat grid.
+
+Version 2 keeps each frequency band on its own robust scale.  The original
+implementation divided every band by the full-range waveform peak.  That made
+real cymbal/snare energy almost disappear on bass-heavy masters and was the
+main reason the renderer only appeared to breathe very slightly.
+"""
 import array
 import hashlib
 import math
@@ -9,9 +15,9 @@ RATE = 12000
 HOP = 120  # 10ms, on the selected clip's clock
 
 def analyse(audio, duration):
-    raw = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(audio),
+    decoded = subprocess.check_output(['ffmpeg', '-v', 'error', '-i', str(audio),
         '-t', str(duration), '-ac', '1', '-ar', str(RATE), '-f', 'f32le', 'pipe:1'])
-    samples = array.array('f'); samples.frombytes(raw)
+    samples = array.array('f'); samples.frombytes(decoded)
     if sys.byteorder != 'little': samples.byteswap()
     if len(samples) < round(duration * RATE) - RATE // 10:
         raise ValueError('Selected soundtrack is shorter than the requested video')
@@ -28,20 +34,69 @@ def analyse(audio, duration):
                 sums[i] += v*v
         for key, total in zip(bands, sums):
             bands[key].append(math.sqrt(total / max(1, len(block))))
-    # A shared scale retains relative band strength. Silence stays zero.
-    peak = max(bands['envelope'], default=0.)
-    scale = max(.02, peak)
-    for key in bands:
+    raw = {key: list(values) for key, values in bands.items()}
+
+    def percentile(values, fraction):
+        ordered = sorted(values)
+        if not ordered: return 0.
+        return ordered[min(len(ordered)-1, max(0, round((len(ordered)-1)*fraction)))]
+
+    # Mastered music often has a narrow dynamic range.  Robust per-band drive
+    # signals expose real changes.  The original physical-relative bands are
+    # also retained so analysis/tests never pretend quiet highs equal loud bass.
+    drive={}
+    for key, original in raw.items():
+        values=list(original)
+        floor = percentile(values, .08)
+        ceiling = max(floor + .0005, percentile(values, .97))
         previous = 0.
-        for i, value in enumerate(bands[key]):
-            target = min(1., value / scale) if value > .0001 else 0.
-            previous += (.8 if target > previous else .16) * (target-previous)
-            bands[key][i] = round(previous, 6)
-    levels = bands['envelope']; onsets = []
-    for i in range(1, len(levels)):
+        for i, value in enumerate(values):
+            target = min(1., max(0., (value-floor)/(ceiling-floor)))
+            target = math.sqrt(target)
+            previous += (.72 if target > previous else .12) * (target-previous)
+            values[i] = round(previous, 6)
+        drive[key+'Drive']=values
+    peak=max(raw['envelope'],default=0.);scale=max(.02,peak)
+    for key,values in bands.items():
+        previous=0.
+        for i,value in enumerate(values):
+            target=min(1.,value/scale) if value>.0001 else 0.
+            previous += (.8 if target>previous else .16)*(target-previous)
+            values[i]=round(previous,6)
+    bands.update(drive)
+
+    def impacts(key, lookback, threshold):
+        values = raw[key]; result=[]; previous=0.
+        for i, value in enumerate(values):
+            before=values[max(0,i-lookback):i]
+            baseline=sum(before)/len(before) if before else value
+            ceiling=max(.0005, percentile(values[max(0,i-120):i+1], .90))
+            target=max(0., min(1., (value-baseline-threshold*ceiling)/(ceiling*.7)))
+            previous += (.92 if target>previous else .22)*(target-previous)
+            result.append(round(previous,6))
+        return result
+
+    # These are measured transient envelopes, not inferred instrument labels.
+    # Names describe the visual mapping: low-band impacts drive bass motion;
+    # mid/high impacts drive sharper accent flashes.
+    bands['bassImpact'] = impacts('bass', 18, .025)
+    combined=[math.sqrt(raw['mids'][i]**2+raw['highs'][i]**2) for i in range(len(raw['mids']))]
+    raw['accent']=combined
+    values=raw['accent']; result=[]; previous=0.
+    for i,value in enumerate(values):
+        before=values[max(0,i-12):i]; baseline=sum(before)/len(before) if before else value
+        ceiling=max(.0005, percentile(values[max(0,i-100):i+1],.90))
+        target=max(0.,min(1.,(value-baseline-.02*ceiling)/(ceiling*.62)))
+        previous += (.94 if target>previous else .28)*(target-previous)
+        result.append(round(previous,6))
+    bands['accentImpact']=result
+    levels = bands['envelopeDrive']; impact=bands['accentImpact']; bass_impact=bands['bassImpact']; onsets = []
+    for i in range(2, len(levels)-3):
         baseline = sum(levels[max(0, i-20):i]) / min(i, 20)
-        if levels[i] > max(.08, baseline*1.7) and levels[i]-levels[i-1] > .06:
-            if not onsets or i*.01-onsets[-1] >= .12: onsets.append(round(i*.01, 3))
+        strength=max(impact[i],bass_impact[i])
+        local_peak=strength>=max(max(impact[i-2:i+3]),max(bass_impact[i-2:i+3]))
+        if (strength > .48 and local_peak) or (levels[i] > max(.16, baseline*1.38) and levels[i]-levels[i-1] > .06):
+            if not onsets or i*.01-onsets[-1] >= .18: onsets.append(round(i*.01, 3))
     # Tempo is measured from onset intervals. It is intentionally omitted when
     # the clip does not contain enough stable evidence; the renderer never
     # manufactures a beat grid for silence or ambiguous material.
@@ -62,10 +117,18 @@ def analyse(audio, duration):
             period = 60/detected
             anchor = onsets[0]
             beats = [round(anchor+i*period, 3) for i in range(math.ceil((duration-anchor)/period)) if anchor+i*period < duration]
-    return {'version': 1, 'hopSeconds': .01, 'bands': bands, 'onsets': onsets,
+    # Broad measured energy movement gives the compositor deliberate build/drop
+    # points instead of random periodic transitions.
+    builds=[]; drops=[]; window=80
+    for i in range(window,len(levels)-window,20):
+        before=sum(levels[i-window:i])/window; after=sum(levels[i:i+window])/window
+        if after-before>.16: builds.append(round(i*.01,3))
+        elif before-after>.18: drops.append(round(i*.01,3))
+    return {'version': 2, 'hopSeconds': .01, 'bands': bands, 'onsets': onsets,
         'beats': beats, 'detectedBpm': detected,
-        'decodedPcmSha256': hashlib.sha256(raw).hexdigest(),
-        'method': 'Measured selected-clip PCM RMS, first-order 150Hz/2kHz crossover and onset-derived tempo; no semantic or genre inference'}
+        'builds': builds, 'drops': drops,
+        'decodedPcmSha256': hashlib.sha256(decoded).hexdigest(),
+        'method': 'Measured selected-clip PCM with per-band robust normalization, low/accent transient envelopes and onset-derived tempo; no semantic or genre inference'}
 
 def at(features, band, time):
     values = features['bands'][band]

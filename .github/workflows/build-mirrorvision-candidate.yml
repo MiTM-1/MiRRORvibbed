@@ -1,7 +1,7 @@
 name: Build isolated MiRRORvision candidate
 on:
   push:
-    branches: [dev/mirrorvision-native-v1-20261016]
+    branches: [dev/mirrorvision-native-v1-20261016, dev/mirrorvision-quality-v136]
     paths:
       - '.github/workflows/build-mirrorvision-candidate.yml'
       - 'mirrorvidgen-worker/Dockerfile.vision'
@@ -13,7 +13,7 @@ permissions:
   packages: write
 jobs:
   build:
-    if: github.ref == 'refs/heads/dev/mirrorvision-native-v1-20261016'
+    if: github.ref == 'refs/heads/dev/mirrorvision-native-v1-20261016' || github.ref == 'refs/heads/dev/mirrorvision-quality-v136'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
