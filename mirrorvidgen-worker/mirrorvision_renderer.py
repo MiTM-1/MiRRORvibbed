@@ -410,11 +410,16 @@ def render(plan, audio, images, clips, output):
                         similarity=source_similarity(pictures[picture_index],shot)
                         if plan['mode']=='Full Music Video' and similarity>=.60:
                             # Genuine H3 motion is now the dominant cinematic layer.  Exact source
-                            # detail is restored over it, retaining artwork identity and lettering.
+                            # detail is restored only where the moving frame still locally matches
+                            # the artwork.  This protects lettering without ghosting a fixed copy of
+                            # a subject over the H3 subject's real motion.
                             h3=ImageEnhance.Color(shot).enhance(1.06)
-                            base=Image.blend(base,h3,.64)
+                            base=Image.blend(base,h3,.88)
                             detail=ImageChops.difference(pictures[picture_index].convert('L'),pictures[picture_index].convert('L').filter(ImageFilter.GaussianBlur(max(3,w//90))))
                             detail=detail.point(lambda v:min(210,v*5)).filter(ImageFilter.GaussianBlur(1))
+                            local_difference=ImageChops.difference(pictures[picture_index].convert('L'),shot.convert('L'))
+                            local_match=local_difference.filter(ImageFilter.GaussianBlur(max(2,w//180))).point(lambda v:max(0,255-max(0,v-18)*7))
+                            detail=ImageChops.multiply(detail,local_match)
                             restore=pictures[picture_index].convert('RGBA');restore.putalpha(detail)
                             base.paste(restore,(0,0),restore)
                         elif plan['mode']=='Hybrid Music Video' and similarity>=.66:
