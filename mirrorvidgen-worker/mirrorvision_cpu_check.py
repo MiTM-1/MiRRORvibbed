@@ -23,7 +23,7 @@ def main():
     probe = _capabilities({"status": "capabilities", "capabilities": {"mirrorromax_h3": {"available": True}}})
     vision = probe["capabilities"]["mirrorvision"]
     assert probe["capabilities"]["mirrorromax_h3"]["available"] is True
-    assert vision["rendererVersion"] == 1 and vision["qualityVersion"] == 2 and vision["native2d"] is True
+    assert vision["rendererVersion"] == 1 and vision["qualityVersion"] == 3 and vision["native2d"] is True
     assert vision["advanced3d"] is False and vision["previousFrameConditioning"] is True
     assert vision["previousFrameMechanism"] == "decoded-final-frame-reference"
     subprocess.run([sys.executable, "-m", "py_compile", "/handler.py", "/mirrorvision_renderer.py", "/audio_features.py"], check=True)
