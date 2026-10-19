@@ -23,7 +23,7 @@ from mirrorvision_renderer import handle as render, extract_boundary
 # reported separately so a cinematic renderer upgrade does not look like an
 # incompatible protocol to already-deployed Site builds.
 CONTRACT_VERSION = 1
-QUALITY_VERSION = 2
+QUALITY_VERSION = 3
 
 
 def _healthy():

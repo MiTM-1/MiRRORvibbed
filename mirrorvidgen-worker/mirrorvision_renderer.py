@@ -5,7 +5,7 @@ The worker entry point is handle(input); it only accepts mirrorvision_render.
 """
 import json, math, os, random, re, subprocess, tempfile, time, urllib.error, urllib.request
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops, ImageEnhance
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageOps, ImageChops, ImageEnhance, ImageStat
 import importlib.util
 _spec = importlib.util.spec_from_file_location('mirrorvision_audio', Path(__file__).with_name('audio_features.py'))
 _audio = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_audio)
@@ -13,7 +13,7 @@ analyse, feature_at = _audio.analyse, _audio.at
 
 FONT = os.environ.get('MIRRORVISION_FONT', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf')
 FPS = 24
-RENDERER_VERSION = 2
+RENDERER_VERSION = 3
 HTTP_HEADERS = {'User-Agent': 'MiRRORvidgen-Worker/1.0'}
 
 def upload_result(url, data):
@@ -228,12 +228,21 @@ def artwork_masks(picture):
                         seen.add((nx,ny));todo.append((nx,ny))
             if 10<=len(points)<=sw*sh*.26:components.append(points)
     component_masks=[]
-    for points in sorted(components,key=len,reverse=True)[:4]:
+    for points in sorted(components,key=len,reverse=True)[:7]:
         cm=Image.new('L',(sw,sh));cd=ImageDraw.Draw(cm)
         for px,py in points:cd.point((px,py),fill=255)
         cm=cm.resize((w,h),Image.Resampling.NEAREST).filter(ImageFilter.GaussianBlur(max(3,w//130)))
         component_masks.append(cm)
-    return {'vivid':vivid,'lights':lights,'foreground':fg,'components':component_masks}
+    protect=Image.new('L',(w,h),0);pd=ImageDraw.Draw(protect)
+    pd.rectangle((0,0,w,round(h*.18)),fill=232)
+    pd.rectangle((0,0,round(w*.035),h),fill=190);pd.rectangle((round(w*.965),0,w,h),fill=190)
+    protect=protect.filter(ImageFilter.GaussianBlur(max(7,w//45)))
+    vivid_support=expanded(saturation.point(lambda v:255 if v>82 else 0),max(4,w//70)).filter(ImageFilter.GaussianBlur(max(2,w//240)))
+    dark_support=expanded(value.point(lambda v:255 if v<62 else 0),max(4,w//85)).filter(ImageFilter.GaussianBlur(max(2,w//260)))
+    source_detail=ImageChops.difference(grey,grey.filter(ImageFilter.GaussianBlur(max(3,w//95))))
+    source_detail=source_detail.point(lambda v:min(230,v*6))
+    return {'vivid':vivid,'lights':lights,'foreground':fg,'components':component_masks,
+        'vivid_support':vivid_support,'dark_support':dark_support,'protect':protect,'source_detail':source_detail}
 
 def shifted_layer(picture, mask, scale=1., dx=0., dy=0.):
     w,h=picture.size
@@ -260,6 +269,125 @@ def source_similarity(source, shot):
     pa=list(a.getdata());pb=list(b.getdata())
     difference=sum(min(abs(x[0]-y[0]),256-abs(x[0]-y[0]))*4.0+abs(x[1]-y[1])*.55+abs(x[2]-y[2])*.55 for x,y in zip(pa,pb))/(1024*793)
     return max(0.,1.-difference)
+
+def structural_similarity(source, shot):
+    """Low-resolution edge-layout agreement, not just matching colour palette."""
+    size=(64,96)
+    a=source.convert('L').resize(size,Image.Resampling.BILINEAR).filter(ImageFilter.FIND_EDGES)
+    b=shot.convert('L').resize(size,Image.Resampling.BILINEAR).filter(ImageFilter.FIND_EDGES)
+    difference=ImageStat.Stat(ImageChops.difference(a,b)).mean[0]
+    return max(0.,min(1.,1.-difference/92.))
+
+def expanded(mask, radius):
+    """Fast morphology with an odd Pillow kernel."""
+    radius=max(1,int(radius));size=radius*2+1
+    if size>99:
+        scale=max(1,math.ceil(size/99));small=mask.resize((max(1,mask.width//scale),max(1,mask.height//scale)),Image.Resampling.BILINEAR)
+        return small.filter(ImageFilter.MaxFilter(max(3,(size//scale)|1))).resize(mask.size,Image.Resampling.BILINEAR)
+    return mask.filter(ImageFilter.MaxFilter(size))
+
+def full_h3_composite(source, native_base, shot, source_masks):
+    """Admit real H3 motion while suppressing newly invented subjects.
+
+    H3 is allowed to move colour and structure already supported by the source.
+    New saturated or dark silhouettes outside that support are heavily rejected.
+    A feathered source-safe title band and outer frame keep branding/composition
+    visible even when H3 attempts an aggressive camera move.
+    """
+    w,h=source.size
+    shot_hsv=shot.convert('HSV')
+    source_vivid=source_masks['vivid_support']
+    shot_vivid=shot_hsv.getchannel('S').point(lambda v:255 if v>105 else 0)
+    vivid_novelty=ImageChops.subtract(shot_vivid,source_vivid)
+    source_dark=source_masks['dark_support']
+    shot_dark=shot_hsv.getchannel('V').point(lambda v:255 if v<48 else 0)
+    dark_novelty=ImageChops.subtract(shot_dark,source_dark)
+    rgb_difference=ImageChops.difference(source,shot).convert('L').filter(ImageFilter.GaussianBlur(max(2,w//180)))
+    # Keep genuine motion, but taper areas whose appearance no longer has any
+    # local source support. This specifically catches duplicate figures and
+    # giant silhouettes without reducing H3 to a static source overlay.
+    # Near-supported H3 pixels are fully opaque, not blended with a second
+    # stationary character underneath. Unsupported changes fall rapidly to
+    # zero; this removes the double-exposure/duplicate-subject failure.
+    fidelity=rgb_difference.point(lambda v:max(0,min(255,255-max(0,v-28)*4)))
+    fidelity=ImageChops.subtract(fidelity,vivid_novelty.point(lambda v:int(v*.82)))
+    fidelity=ImageChops.subtract(fidelity,dark_novelty.point(lambda v:int(v*.90)))
+    protect=source_masks['protect']
+    fidelity=ImageChops.subtract(fidelity,protect.point(lambda v:int(v*.78)))
+    h3=ImageEnhance.Color(shot).enhance(1.07)
+    composed=Image.composite(h3,native_base,fidelity)
+    # Re-lay only the crisp high-frequency source detail in protected title/
+    # edge areas. This retains exact logos and spelling without ghosting a
+    # second fixed character over a legitimately moving H3 subject.
+    source_detail=source_masks['source_detail']
+    restore_mask=ImageChops.multiply(source_detail,protect).filter(ImageFilter.GaussianBlur(1))
+    restore=source.convert('RGBA');restore.putalpha(restore_mask)
+    composed.paste(restore,(0,0),restore)
+    return composed
+
+def h3_environment_composite(source, native_base, shot, source_masks):
+    """Reuse divergent H3 as moving atmosphere, never as replacement subjects."""
+    shot_hsv=shot.convert('HSV')
+    source_support=ImageChops.lighter(source_masks['vivid_support'],source_masks['dark_support'])
+    source_support=ImageChops.lighter(source_support,source_masks['protect'])
+    environment=ImageOps.invert(source_support).filter(ImageFilter.GaussianBlur(max(5,source.width//75)))
+    vivid_novelty=ImageChops.subtract(shot_hsv.getchannel('S').point(lambda v:255 if v>92 else 0),source_masks['vivid_support'])
+    dark_novelty=ImageChops.subtract(shot_hsv.getchannel('V').point(lambda v:255 if v<58 else 0),source_masks['dark_support'])
+    atmosphere=environment.point(lambda v:int(v*.68))
+    atmosphere=ImageChops.subtract(atmosphere,vivid_novelty.point(lambda v:int(v*.88)))
+    atmosphere=ImageChops.subtract(atmosphere,dark_novelty.point(lambda v:int(v*.92)))
+    # Blur the admitted H3 layer enough to turn it into cinematic moving light/
+    # depth rather than a second readable person or altered logo.
+    moving=shot.filter(ImageFilter.GaussianBlur(max(4,source.width//90)))
+    composed=Image.composite(moving,native_base,atmosphere)
+    return restore_source_detail(composed,source,source_masks,.62)
+
+def restore_source_detail(base, source, source_masks, strength=.46):
+    """Keep fine logos/lettering crisp after independent layer motion.
+
+    This restores edge detail only, never a full static subject, so the artwork
+    can still move without smearing or duplicating text and facial marks.
+    """
+    w,h=source.size
+    whole=source_masks['source_detail'].point(lambda v:int(v*strength))
+    upper=Image.new('L',(w,h));ud=ImageDraw.Draw(upper)
+    ud.rectangle((0,0,w,round(h*.34)),fill=215)
+    upper=upper.filter(ImageFilter.GaussianBlur(max(5,w//80)))
+    exact=ImageChops.lighter(whole,ImageChops.multiply(source_masks['source_detail'],upper))
+    layer=source.convert('RGBA');layer.putalpha(exact)
+    out=base.convert('RGBA');out.alpha_composite(layer)
+    return out.convert('RGB')
+
+def prismatic_echo(base, mask, amount, direction=1):
+    """Source-derived chromatic depth echo; never invents image content."""
+    if amount<=.01:return base
+    w,h=base.size;shift=max(1,round(w*.012*amount))*direction
+    layer=shifted_layer(base,mask,1.0+amount*.012,shift,-shift//2)
+    red=Image.new('RGBA',(w,h),(244,26,86,0));red.putalpha(layer.getchannel('A').point(lambda v:int(v*.42*amount)))
+    cyan=Image.new('RGBA',(w,h),(38,211,255,0));cyan.putalpha(layer.getchannel('A').point(lambda v:int(v*.30*amount)))
+    out=base.convert('RGBA');out.alpha_composite(red);out.alpha_composite(cyan,(-shift*2,shift))
+    return out.convert('RGB')
+
+def impact_cut(base, source, strength, style):
+    """Brief source-preserving transition used only at measured musical cuts."""
+    if strength<=.01:return base
+    w,h=base.size;strength=min(1.,strength)
+    if style%3==0:
+        # Vertical aperture snaps open/closed around the composition centre.
+        mask=Image.new('L',(w,h));d=ImageDraw.Draw(mask);half=w*(.08+.52*strength)
+        d.rectangle((w/2-half,0,w/2+half,h),fill=255)
+        return Image.composite(base,Image.new('RGB',(w,h),(2,2,7)),mask.filter(ImageFilter.GaussianBlur(max(2,w//180))))
+    if style%3==1:
+        # Depth echo on alternating slices, then immediate return to clarity.
+        sliced=base.copy();band=max(12,h//11)
+        for i,top in enumerate(range(0,h,band)):
+            strip=source.crop((0,top,w,min(h,top+band)))
+            sliced.paste(strip,(round(((-1)**i)*w*.035*(1-strength)),top))
+        return Image.blend(base,sliced,.38*strength)
+    # Luminous radial reveal, source remains the content.
+    iris=Image.new('L',(w,h));d=ImageDraw.Draw(iris);radius=math.hypot(w,h)*(.10+.90*strength)
+    d.ellipse((w/2-radius,h/2-radius,w/2+radius,h/2+radius),fill=255)
+    return Image.composite(base,Image.new('RGB',(w,h),(1,2,6)),iris.filter(ImageFilter.GaussianBlur(max(4,w//90))))
 
 def screen_colour(base, overlay, amount):
     return Image.blend(base,ImageChops.screen(base,overlay),max(0.,min(1.,amount)))
@@ -365,37 +493,47 @@ def render(plan, audio, images, clips, output):
                     picture_index=section % len(pictures)
                     pic=pictures[picture_index]; mask=masks[picture_index]
                     if plan['mode']=='Hybrid Music Video':
-                        zoom=1.022+.028*(.5+.5*math.sin(t*.37))+.042*bass_hit+.025*transition_hit
-                        dx=math.sin(t*.31)*w*.014 + accent*w*.010 + math.sin(section*2.1)*transition_hit*w*.025
-                        dy=math.cos(t*.23)*h*.010 - bass_hit*h*.009
+                        # Camera drift is deliberately slower than element motion. The
+                        # image no longer reads as one global breathing layer.
+                        zoom=1.016+.012*(.5+.5*math.sin(t*.29))+.018*bass_hit+.014*transition_hit
+                        dx=math.sin(t*.23)*w*.010 + accent*w*.006 + math.sin(section*2.1)*transition_hit*w*.014
+                        dy=math.cos(t*.19)*h*.007 - bass_hit*h*.004
                     elif plan['mode']=='Full Music Video':
                         zoom=1.014+.015*(.5+.5*math.sin(t*.29))+.018*bass_hit
                         dx=math.sin(t*.27)*w*.008;dy=math.cos(t*.21)*h*.006
                     else:
-                        zoom=1.012+.018*(.5+.5*math.sin(t*.25))+.014*pulse
-                        dx=math.sin(t*.19)*w*.006;dy=math.cos(t*.17)*h*.005
+                        zoom=1.008+.010*(.5+.5*math.sin(t*.21))+.012*pulse
+                        dx=math.sin(t*.17)*w*.005;dy=math.cos(t*.13)*h*.004
                     base=camera_frame(pic,zoom,dx,dy)
                     # Independent measured planes: opposing parallax, bass expansion on vivid
                     # artwork and a separate high-frequency luminous layer.
-                    foreground=shifted_layer(pic,mask['foreground'],1.004+.010*level,
-                        -math.sin(t*.31)*w*.008,-math.cos(t*.23)*h*.005)
+                    mode_gain=1.42 if plan['mode']=='Hybrid Music Video' else (1.18 if plan['mode']=='Mystery Teaser' else 1.10)
+                    foreground=shifted_layer(pic,mask['foreground'],1.003+.015*level*mode_gain+.018*bass_hit*mode_gain,
+                        -math.sin(t*.31)*w*.012*mode_gain,-math.cos(t*.23)*h*.008*mode_gain-bass_hit*h*.006*mode_gain)
                     base.paste(foreground,(0,0),foreground)
-                    vivid=shifted_layer(pic,mask['vivid'],1.0+.016*bass+.040*bass_hit,
-                        math.sin(t*.43)*w*.007,-bass_hit*h*.007)
+                    vivid=shifted_layer(pic,mask['vivid'],1.0+.019*bass*mode_gain+.052*bass_hit*mode_gain,
+                        math.sin(t*.43)*w*.011*mode_gain,-bass_hit*h*.012*mode_gain)
                     base.paste(vivid,(0,0),vivid)
                     for layer_index,component in enumerate(mask['components']):
-                        drive=(bass_hit if layer_index%2==0 else accent)
-                        phase=t*(.32+.07*layer_index)+layer_index*1.7
-                        isolated=shifted_layer(pic,component,1.0+(.018+.006*layer_index)*drive,
-                            math.sin(phase)*w*(.006+.002*layer_index),
-                            math.cos(phase*.83)*h*(.004+.0014*layer_index)-drive*h*.005)
+                        # Separate colour islands receive separate frequency mappings and
+                        # phase, so suitable characters, hearts, headphones, signage and
+                        # environmental accents visibly move as independent artwork layers.
+                        drive=(bass_hit if layer_index%3==0 else (accent if layer_index%3==1 else highs))
+                        phase=t*(.58+.11*layer_index)+layer_index*1.73
+                        amplitude=mode_gain*(.012+.0035*min(layer_index,5))
+                        isolated=shifted_layer(pic,component,1.0+(.035+.008*layer_index)*drive*mode_gain,
+                            math.sin(phase)*w*amplitude,
+                            math.cos(phase*.79)*h*amplitude*.72-drive*h*.012*mode_gain)
                         base.paste(isolated,(0,0),isolated)
                     luminous=Image.new('RGBA',(w,h)); luminous.paste(pic.convert('RGBA'),(0,0),mask['lights'])
                     luminous=luminous.filter(ImageFilter.GaussianBlur(max(3,int(w*.009))))
                     light_rgb=Image.new('RGB',(w,h));light_rgb.paste(luminous.convert('RGB'))
-                    base=screen_colour(base,light_rgb,.08+.25*highs+.16*accent)
-                    base=ImageEnhance.Contrast(base).enhance(1.02+.09*pulse)
-                    base=ImageEnhance.Color(base).enhance(1.02+.14*level)
+                    base=screen_colour(base,light_rgb,.07+.31*highs*mode_gain+.20*accent*mode_gain)
+                    base=ImageEnhance.Contrast(base).enhance(1.02+.08*pulse*mode_gain)
+                    base=ImageEnhance.Color(base).enhance(1.02+.12*level*mode_gain)
+                    if plan['mode'] in ('Hybrid Music Video','Mystery Teaser'):
+                        base=prismatic_echo(base,mask['components'][0] if mask['components'] else mask['vivid'],max(accent,bass_hit)*mode_gain,1 if section%2==0 else -1)
+                        base=restore_source_detail(base,pic,mask,.52 if plan['mode']=='Hybrid Music Video' else .42)
                 if footage and not pictures:
                     sequence = footage[min(len(footage)-1, scene_index)]
                     if sequence:
@@ -408,20 +546,11 @@ def render(plan, audio, images, clips, output):
                         local_frame = max(0, round((t-local_start)*FPS))
                         shot = Image.open(sequence[min(len(sequence)-1, local_frame)]).convert('RGB')
                         similarity=source_similarity(pictures[picture_index],shot)
-                        if plan['mode']=='Full Music Video' and similarity>=.60:
-                            # Genuine H3 motion is now the dominant cinematic layer.  Exact source
-                            # detail is restored only where the moving frame still locally matches
-                            # the artwork.  This protects lettering without ghosting a fixed copy of
-                            # a subject over the H3 subject's real motion.
-                            h3=ImageEnhance.Color(shot).enhance(1.06)
-                            base=Image.blend(base,h3,.88)
-                            detail=ImageChops.difference(pictures[picture_index].convert('L'),pictures[picture_index].convert('L').filter(ImageFilter.GaussianBlur(max(3,w//90))))
-                            detail=detail.point(lambda v:min(210,v*5)).filter(ImageFilter.GaussianBlur(1))
-                            local_difference=ImageChops.difference(pictures[picture_index].convert('L'),shot.convert('L'))
-                            local_match=local_difference.filter(ImageFilter.GaussianBlur(max(2,w//180))).point(lambda v:max(0,255-max(0,v-18)*7))
-                            detail=ImageChops.multiply(detail,local_match)
-                            restore=pictures[picture_index].convert('RGBA');restore.putalpha(detail)
-                            base.paste(restore,(0,0),restore)
+                        structure=structural_similarity(pictures[picture_index],shot)
+                        if plan['mode']=='Full Music Video' and similarity>=.56 and structure>=.56:
+                            base=full_h3_composite(pictures[picture_index],base,shot,mask)
+                        elif plan['mode']=='Full Music Video':
+                            base=h3_environment_composite(pictures[picture_index],base,shot,mask)
                         elif plan['mode']=='Hybrid Music Video' and similarity>=.66:
                             base=Image.blend(base,shot,.24)
                         else:
@@ -431,15 +560,23 @@ def render(plan, audio, images, clips, output):
                             base=screen_colour(base,rejected,.025+.05*level)
                 strength=1.0 if plan['mode']=='Mystery Teaser' else (1.18 if plan['mode']=='Hybrid Music Video' else 1.30)
                 base=cinematic_light(base,palette,t,duration,min(1,level*strength),min(1,bass*strength),min(1,highs*strength),min(1,pulse*strength),particles)
-                if plan['mode']=='Hybrid Music Video' and max(accent,transition_hit)>.22:
+                if plan['mode']=='Hybrid Music Video' and max(accent,transition_hit)>.18:
                     # Brief beat-cut refraction: measured horizontal bands travel in opposing
                     # directions, then settle immediately. The original artwork remains below.
                     sliced=base.copy();band=max(8,h//9);amount=max(accent,transition_hit)
                     for band_index,top in enumerate(range(0,h,band)):
                         strip=base.crop((0,top,w,min(h,top+band)))
-                        shift=round(((-1)**band_index)*w*.014*amount)
+                        shift=round(((-1)**band_index)*w*.026*amount)
                         sliced.paste(strip,(shift,top))
-                    base=Image.blend(base,sliced,.28*amount)
+                    base=Image.blend(base,sliced,.42*amount)
+                    # The source itself drives a brief beat-cut transition; no random
+                    # unrelated footage or blur replaces it.
+                    base=impact_cut(base,pic if pictures else base,transition_hit,section)
+                elif plan['mode']=='Mystery Teaser':
+                    # Measured phrase/cut timing controls shutters and irises so even an
+                    # image-only teaser has dramatic, deliberate visual progression.
+                    phrase_cut=max([max(0.,1-abs(t-v)/.22) for v in text_times[1:-1]] or [0.])
+                    base=impact_cut(base,pic if pictures else base,max(transition_hit,phrase_cut),section+len(text_layers))
                 bloom = base.filter(ImageFilter.GaussianBlur(max(2, int(min(w,h)*.006))))
                 base = screen_colour(base,bloom,.025+.10*level+.06*pulse)
                 vignette = Image.new('L',(w,h)); vd=ImageDraw.Draw(vignette)
@@ -450,7 +587,7 @@ def render(plan, audio, images, clips, output):
                     at = max(i for i,v in enumerate(text_times[:-1]) if v<=t)
                     local = (t-text_times[at])/max(.001,text_times[at+1]-text_times[at])
                     layer=text_layers[at].copy(); alpha=layer.getchannel('A')
-                    enter=min(1,local*4.2);leave=min(1,max(0,(1-local)*7));ease=1-(1-enter)**3
+                    enter=min(1,local*3.35);leave=min(1,max(0,(1-local)*8.5));ease=1-(1-enter)**3
                     style=at%4
                     if style==0:
                         # A luminous slit opens across the exact glyphs.
@@ -464,14 +601,20 @@ def render(plan, audio, images, clips, output):
                     else:
                         reveal=Image.new('L',layer.size);rd=ImageDraw.Draw(reveal);rd.ellipse((layer.width/2-layer.width*.65*ease,layer.height/2-layer.height*ease,layer.width/2+layer.width*.65*ease,layer.height/2+layer.height*ease),fill=255)
                     layer.putalpha(ImageChops.multiply(alpha,reveal).point(lambda v:int(v*leave)))
-                    scale=.72+.28*ease+.045*pulse
+                    # A deeper camera approach and measured beat impact gives the type
+                    # real kinetic weight while keeping its baseline stable.
+                    scale=.58+.42*ease+.050*pulse
                     tw=max(2,round(layer.width*scale));th=max(2,round(layer.height*scale));layer=layer.resize((tw,th),Image.Resampling.LANCZOS)
-                    y=int(h*.47-th/2+(1-ease)*h*.05)
-                    # A feathered glass field isolates the title without a flat banner.
-                    ph=int(th*1.65);panel=Image.new('RGBA',(w,ph));pd=ImageDraw.Draw(panel)
-                    pd.rounded_rectangle((int(w*.035),int(ph*.08),int(w*.965),int(ph*.92)),radius=max(12,int(ph*.22)),fill=(4,4,10,int(92+48*(1-ease))))
-                    panel=panel.filter(ImageFilter.GaussianBlur(max(7,w//100)))
-                    base.paste(panel,(0,max(0,int(h*.47-panel.height/2))),panel)
+                    anchor=(.31,.49,.68,.43)[at%4]
+                    y=int(h*anchor-th/2+(1-ease)*h*((-1 if at%2 else 1)*.08))
+                    # Feathered local stage + travelling fine lines: a cinematic title
+                    # treatment, not the previous full-width flat banner.
+                    ph=int(th*1.78);panel=Image.new('RGBA',(w,ph));pd=ImageDraw.Draw(panel)
+                    left=int(w*(.075+.055*(1-ease)));right=int(w*(.925-.055*(1-ease)))
+                    pd.rounded_rectangle((left,int(ph*.10),right,int(ph*.90)),radius=max(12,int(ph*.22)),fill=(3,3,9,int(72+62*(1-ease))),outline=(*palette,int(65+80*pulse)),width=max(1,w//240))
+                    line_y=int(ph*(.18+.64*ease));pd.line((left+w*.04,line_y,right-w*.04,line_y),fill=(255,228,194,int(95+130*accent)),width=max(1,w//210))
+                    panel=panel.filter(ImageFilter.GaussianBlur(max(4,w//170)))
+                    panel_y=max(0,int(h*anchor-panel.height/2));base.paste(panel,(0,panel_y),panel)
                     # The outgoing phrase physically expands and dissolves into the incoming
                     # one, producing a continuous word-morph transition instead of a cut.
                     if at>0 and local<.24:
@@ -479,7 +622,7 @@ def render(plan, audio, images, clips, output):
                         old.putalpha(old.getchannel('A').point(lambda v:int(v*fade*.72)))
                         oscale=1+.22*(1-fade);ow=max(2,round(old.width*oscale));oh=max(2,round(old.height*oscale))
                         old=old.resize((ow,oh),Image.Resampling.BICUBIC)
-                        oy=int(h*.47-oh/2)
+                        oy=int(h*anchor-oh/2)
                         base.paste(old,((w-ow)//2,oy),old)
                     if kinetic_glyphs[at]:
                         origin=(w-int(w*.86))/2
@@ -495,7 +638,8 @@ def render(plan, audio, images, clips, output):
                             sprite.putalpha(sprite.getchannel('A').point(lambda v:int(v*leave)))
                             scatter=((glyph_index%2)*2-1)*(1-ge)*w*.055
                             gx=round(origin+glyph_x+(glyph.width-sprite.width)/2+scatter)
-                            gy=round(h*.47-sprite.height/2+((glyph_index%2)*2-1)*(1-ge)*h*.065)
+                            arc=math.sin((glyph_index/max(1,count-1))*math.pi)*h*.018
+                            gy=round(h*anchor-sprite.height/2-arc*ge+((glyph_index%2)*2-1)*(1-ge)*h*.082)
                             gl=sprite.copy();gl.putalpha(sprite.getchannel('A').filter(ImageFilter.GaussianBlur(max(5,w//110))))
                             base.paste(gl,(gx,gy),gl);base.paste(sprite,(gx,gy),sprite)
                     else:

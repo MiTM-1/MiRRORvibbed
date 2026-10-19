@@ -17,6 +17,12 @@ with tempfile.TemporaryDirectory() as temp:
  Image.new('RGB',(320,180),(30,75,140)).save(image)
  assert r.source_similarity(Image.new('RGB',(64,64),'blue'),Image.new('RGB',(64,64),'blue'))>.99
  assert r.source_similarity(Image.new('RGB',(64,64),'blue'),Image.new('RGB',(64,64),'red'))<.60
+ layout_a=Image.new('RGB',(320,180),'white');layout_b=Image.new('RGB',(320,180),'white')
+ from PIL import ImageDraw
+ ImageDraw.Draw(layout_a).rectangle((20,20,120,160),fill='black')
+ ImageDraw.Draw(layout_b).rectangle((200,20,300,160),fill='black')
+ assert r.structural_similarity(layout_a,layout_a)>.95
+ assert r.structural_similarity(layout_a,layout_b)<.56
  assert r.dimensions('9:16')==(320,180)  # fixture override still applies to the production render path
  clips=[]
  for color in ['red','blue']:
