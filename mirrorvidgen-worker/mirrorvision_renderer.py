@@ -273,10 +273,12 @@ def source_similarity(source, shot):
 def structural_similarity(source, shot):
     """Low-resolution edge-layout agreement, not just matching colour palette."""
     size=(64,96)
-    a=source.convert('L').resize(size,Image.Resampling.BILINEAR).filter(ImageFilter.FIND_EDGES)
-    b=shot.convert('L').resize(size,Image.Resampling.BILINEAR).filter(ImageFilter.FIND_EDGES)
-    difference=ImageStat.Stat(ImageChops.difference(a,b)).mean[0]
-    return max(0.,min(1.,1.-difference/92.))
+    a=source.convert('L').resize(size,Image.Resampling.BILINEAR).filter(ImageFilter.FIND_EDGES).point(lambda v:255 if v>26 else 0)
+    b=shot.convert('L').resize(size,Image.Resampling.BILINEAR).filter(ImageFilter.FIND_EDGES).point(lambda v:255 if v>26 else 0)
+    pa=list(a.getdata());pb=list(b.getdata())
+    overlap=sum(1 for x,y in zip(pa,pb) if x and y)
+    total=sum(1 for x in pa if x)+sum(1 for y in pb if y)
+    return 1. if not total else min(1.,2.*overlap/total)
 
 def expanded(mask, radius):
     """Fast morphology with an odd Pillow kernel."""
