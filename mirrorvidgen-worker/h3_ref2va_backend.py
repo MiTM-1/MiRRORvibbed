@@ -144,6 +144,26 @@ def h3_ref2va_install_plan(include_turbo=False):
     }
 
 
+def _reuse_existing(spec, target):
+    """Hard-link an identical named model already present on the shared volume."""
+    root = MODEL_ROOT.parent
+    if not root.is_dir():
+        return None
+    for candidate in root.rglob(spec["name"]):
+        try:
+            if candidate == target or not candidate.is_file():
+                continue
+            size = candidate.stat().st_size
+            if size < int(spec["min_bytes"]):
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            os.link(candidate, target)
+            return size
+        except (OSError, RuntimeError):
+            continue
+    return None
+
+
 def _download_atomic(url, target, min_bytes):
     target.parent.mkdir(parents=True, exist_ok=True)
     part = target.with_name(target.name + ".part")
@@ -207,6 +227,17 @@ def h3_ref2va_install(*, accept_model_license=False, include_turbo=False):
                 "name": spec["name"],
                 "status": "already_present",
                 "bytes": size,
+                "path": str(target),
+            })
+            continue
+
+        reused_size = _reuse_existing(spec, target)
+        if reused_size is not None:
+            completed.append({
+                "key": key,
+                "name": spec["name"],
+                "status": "reused_hardlink",
+                "bytes": reused_size,
                 "path": str(target),
             })
             continue
