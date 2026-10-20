@@ -20,7 +20,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-7"
+MIGRATION_BUILD = "v136-modal-staging-8"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -274,6 +274,12 @@ def volume_fs_probe() -> dict:
     root.mkdir(parents=True)
     result = {}
     try:
+        result["runtime_python"] = {
+            "executable": sys.executable,
+            "version": sys.version,
+            "configured_freevideo_python": os.environ.get("FREEVIDEO_PYTHON"),
+        }
+
         script = root / "hello.sh"
         script.write_text("#!/bin/sh\necho modal-volume-exec\n", encoding="utf-8")
         script.chmod(0o755)
