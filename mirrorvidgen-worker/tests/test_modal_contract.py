@@ -42,11 +42,13 @@ class ModalContractTests(unittest.TestCase):
             for node in self.tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        self.assertTrue({"native_job", "h3_job", "maintenance_job", "submit", "status"}.issubset(names))
+        self.assertTrue({"native_job", "h3_job", "h3_bootstrap_job", "maintenance_job", "submit", "status"}.issubset(names))
         self.assertIn('{"h3_runtime_audit", "h3_ref2va_status"}', self.source)
         self.assertIn('command == "h3-audit"', self.source)
         self.assertIn('command == "h3-bootstrap"', self.source)
         self.assertIn("timeout=7200", self.source)
+        self.assertIn("timeout=2100", self.source)
+        self.assertIn("The bounded bootstrap function only accepts h3_install", self.source)
         self.assertIn("def _ensure_comfy()", self.source)
         self.assertIn('"/comfyui/main.py"', self.source)
         self.assertIn("if _requires_comfy(payload):", self.source)
