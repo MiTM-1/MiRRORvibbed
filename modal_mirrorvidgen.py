@@ -100,13 +100,30 @@ def native_job(job_id: str, payload: dict) -> dict:
     volumes={str(VOLUME_ROOT): volume},
     cpu=8,
     memory=32768,
-    timeout=3600,
+    timeout=7200,
     min_containers=0,
     max_containers=1,
     scaledown_window=2,
 )
 def h3_job(job_id: str, payload: dict) -> dict:
     return _execute(job_id, payload, "h3-gpu")
+
+
+@app.function(
+    image=worker_image,
+    volumes={str(VOLUME_ROOT): volume},
+    cpu=2,
+    memory=4096,
+    timeout=300,
+    min_containers=0,
+    max_containers=1,
+    scaledown_window=2,
+)
+def maintenance_job(job_id: str, payload: dict) -> dict:
+    action = str(payload.get("action") or "").strip().lower()
+    if action not in {"h3_runtime_audit", "h3_ref2va_status"}:
+        raise ValueError("The CPU maintenance function only accepts read-only audit actions")
+    return _execute(job_id, payload, "maintenance-cpu")
 
 
 @app.function(
@@ -176,5 +193,25 @@ def main(command: str = "identity"):
         )
         print(json.dumps(result, sort_keys=True))
         return
-    raise ValueError("command must be identity or native-health")
+    if command == "h3-audit":
+        result = {
+            "runtime": maintenance_job.remote(
+                "modal-h3-runtime-audit",
+                {"action": "h3_runtime_audit"},
+            ),
+            "ref2va": maintenance_job.remote(
+                "modal-h3-ref2va-status",
+                {"action": "h3_ref2va_status"},
+            ),
+        }
+        print(json.dumps(result, sort_keys=True))
+        return
+    if command == "h3-bootstrap":
+        result = h3_job.remote(
+            "modal-h3-bootstrap",
+            {"action": "h3_install", "accept_model_license": True},
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
+    raise ValueError("command must be identity, native-health, h3-audit or h3-bootstrap")
 
