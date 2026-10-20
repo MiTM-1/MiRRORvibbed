@@ -18,6 +18,8 @@ on:
         options:
           - validate
           - deploy
+          - audit
+          - bootstrap
 
 permissions:
   contents: read
@@ -47,9 +49,18 @@ jobs:
           python -m compileall -q mirrorvidgen-worker modal_mirrorvidgen.py
           python -m unittest discover -s mirrorvidgen-worker/tests -p 'test_*.py' -v
       - name: Deploy isolated scale-to-zero staging app
-        if: inputs.action == 'deploy' || contains(github.event.head_commit.message, '[modal-deploy]')
+        if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-deploy]')
         run: modal deploy modal_mirrorvidgen.py
       - name: Run deployed native renderer health check
-        if: inputs.action == 'deploy' || contains(github.event.head_commit.message, '[modal-deploy]')
+        if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-deploy]')
         run: modal run modal_mirrorvidgen.py --command native-health
 
+      - name: Run read-only Modal H3 volume audit
+        if: inputs.action == 'audit' || inputs.action == 'bootstrap'
+        run: modal run modal_mirrorvidgen.py --command h3-audit
+      - name: Bootstrap the isolated Modal H3 runtime
+        if: inputs.action == 'bootstrap'
+        run: modal run modal_mirrorvidgen.py --command h3-bootstrap
+      - name: Verify the bootstrapped Modal H3 runtime
+        if: inputs.action == 'bootstrap'
+        run: modal run modal_mirrorvidgen.py --command h3-audit
