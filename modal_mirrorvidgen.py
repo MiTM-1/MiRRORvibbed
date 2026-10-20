@@ -19,7 +19,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-2"
+MIGRATION_BUILD = "v136-modal-staging-3"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -180,6 +180,7 @@ def native_job(job_id: str, payload: dict) -> dict:
     scaledown_window=2,
 )
 def h3_job(job_id: str, payload: dict) -> dict:
+    os.environ["FREEVIDEO_ALLOW_RSS_GUARD"] = "1"
     if _requires_comfy(payload):
         _ensure_comfy()
     return _execute(job_id, payload, "h3-gpu")
@@ -197,6 +198,7 @@ def h3_job(job_id: str, payload: dict) -> dict:
     scaledown_window=2,
 )
 def h3_bootstrap_job(job_id: str, payload: dict) -> dict:
+    os.environ["FREEVIDEO_ALLOW_RSS_GUARD"] = "1"
     if str(payload.get("action") or "").strip().lower() != "h3_install":
         raise ValueError("The bounded bootstrap function only accepts h3_install")
     return _execute(job_id, payload, "h3-bootstrap-gpu")
