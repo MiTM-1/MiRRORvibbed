@@ -19,7 +19,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-4"
+MIGRATION_BUILD = "v136-modal-staging-5"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -110,17 +110,37 @@ def _ensure_comfy() -> None:
 def _enable_modal_rss_guard() -> None:
     """Keep the pinned persistent FreeVideo source aligned with the Modal patch."""
     os.environ["FREEVIDEO_ALLOW_RSS_GUARD"] = "1"
+    os.environ["FREEVIDEO_UV_LINK_MODE"] = "copy"
+    changed = False
     patched = Path("/opt/freevideo/freevideo_engine/ram.py")
     persistent = VOLUME_ROOT / "freevideo-h3" / "source" / "freevideo_engine" / "ram.py"
-    if not patched.is_file() or not persistent.is_file():
-        return
-    patched_bytes = patched.read_bytes()
-    if persistent.read_bytes() == patched_bytes:
-        return
-    temp = persistent.with_suffix(".modal.tmp")
-    temp.write_bytes(patched_bytes)
-    temp.replace(persistent)
-    volume.commit()
+    if patched.is_file() and persistent.is_file():
+        patched_bytes = patched.read_bytes()
+        if persistent.read_bytes() != patched_bytes:
+            temp = persistent.with_suffix(".modal.tmp")
+            temp.write_bytes(patched_bytes)
+            temp.replace(persistent)
+            changed = True
+
+    uv_old = "UV_PYTHON_INSTALL_DIR=str(self.root / 'python'), UV_LINK_MODE='hardlink',"
+    uv_new = ("UV_PYTHON_INSTALL_DIR=str(self.root / 'python'), "
+              "UV_LINK_MODE=os.environ.get('FREEVIDEO_UV_LINK_MODE', 'hardlink'),")
+    for bootstrap in (
+        Path("/opt/freevideo/freevideo_engine/bootstrap.py"),
+        VOLUME_ROOT / "freevideo-h3" / "source" / "freevideo_engine" / "bootstrap.py",
+    ):
+        if not bootstrap.is_file():
+            continue
+        source = bootstrap.read_text(encoding="utf-8")
+        if uv_old in source:
+            temp = bootstrap.with_suffix(".modal.tmp")
+            temp.write_text(source.replace(uv_old, uv_new, 1), encoding="utf-8")
+            temp.replace(bootstrap)
+            changed = changed or str(bootstrap).startswith(str(VOLUME_ROOT))
+        elif uv_new not in source:
+            raise RuntimeError(f"Unexpected pinned FreeVideo bootstrap source: {bootstrap}")
+    if changed:
+        volume.commit()
 
 
 def _load_handler():
