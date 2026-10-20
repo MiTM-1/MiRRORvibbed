@@ -42,7 +42,11 @@ class ModalContractTests(unittest.TestCase):
             for node in self.tree.body
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
-        self.assertTrue({"native_job", "h3_job", "submit", "status"}.issubset(names))
+        self.assertTrue({"native_job", "h3_job", "maintenance_job", "submit", "status"}.issubset(names))
+        self.assertIn('{"h3_runtime_audit", "h3_ref2va_status"}', self.source)
+        self.assertIn('command == "h3-audit"', self.source)
+        self.assertIn('command == "h3-bootstrap"', self.source)
+        self.assertIn("timeout=7200", self.source)
         dispatcher = (ROOT / "mirrorvidgen-worker" / "mirrorvision_dispatch.py").read_text(encoding="utf-8")
         self.assertIn('action == "mirrorvision_health"', dispatcher)
         self.assertIn('{"action": "mirrorvision_health"}', self.source)
