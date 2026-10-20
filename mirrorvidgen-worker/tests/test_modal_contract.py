@@ -21,6 +21,15 @@ class ModalContractTests(unittest.TestCase):
         self.assertGreaterEqual(self.source.count("max_containers=1"), 3)
         self.assertGreaterEqual(self.source.count("scaledown_window=2"), 3)
 
+    def test_modal_gvisor_uses_conservative_rss_memory_guard(self):
+        patch = (ROOT / "mirrorvidgen-worker" / "patch_freevideo_modal.py").read_text(encoding="utf-8")
+        self.assertIn("FREEVIDEO_ALLOW_RSS_GUARD", patch)
+        self.assertIn("RSS-fallback", patch)
+        self.assertIn("rss if rss_fallback", patch)
+        self.assertIn("COPY patch_freevideo_modal.py", self.dockerfile)
+        self.assertIn("/tmp/patch_freevideo_modal.py", self.dockerfile)
+        self.assertIn("ENV FREEVIDEO_ALLOW_RSS_GUARD=1", self.dockerfile)
+
     def test_existing_worker_contract_is_preserved(self):
         self.assertIn("from handler import handler", self.source)
         self.assertIn('{"id": job_id, "input": payload}', self.source)
