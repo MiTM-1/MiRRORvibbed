@@ -30,6 +30,15 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn("/tmp/patch_freevideo_modal.py", self.dockerfile)
         self.assertIn("ENV FREEVIDEO_ALLOW_RSS_GUARD=1", self.dockerfile)
 
+    def test_modal_volume_uses_image_python_without_hardlinks(self):
+        setup = (ROOT / "mirrorvidgen-worker" / "h3-setup.sh").read_text(encoding="utf-8")
+        self.assertIn("FREEVIDEO_PYTHON=/opt/venv/bin/python", self.dockerfile)
+        self.assertIn("FREEVIDEO_UV_LINK_MODE=copy", self.dockerfile)
+        self.assertIn("Applying Modal Volume Python-runtime compatibility fix", setup)
+        self.assertIn("requested = self.env.get('FREEVIDEO_PYTHON'", setup)
+        self.assertIn("Using verified Modal image Python", setup)
+        self.assertIn("UV_LINK_MODE=os.environ.get('FREEVIDEO_UV_LINK_MODE'", setup)
+
     def test_existing_worker_contract_is_preserved(self):
         self.assertIn("from handler import handler", self.source)
         self.assertIn('{"id": job_id, "input": payload}', self.source)
