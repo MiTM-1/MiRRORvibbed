@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -19,7 +20,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-5"
+MIGRATION_BUILD = "v136-modal-staging-6"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -259,6 +260,76 @@ def maintenance_job(job_id: str, payload: dict) -> dict:
 
 @app.function(
     image=worker_image,
+    volumes={str(VOLUME_ROOT): volume},
+    cpu=2,
+    memory=4096,
+    timeout=300,
+    min_containers=0,
+    max_containers=1,
+    scaledown_window=2,
+)
+def volume_fs_probe() -> dict:
+    root = VOLUME_ROOT / "modal-fs-probe"
+    shutil.rmtree(root, ignore_errors=True)
+    root.mkdir(parents=True)
+    result = {}
+    try:
+        script = root / "hello.sh"
+        script.write_text("#!/bin/sh\necho modal-volume-exec\n", encoding="utf-8")
+        script.chmod(0o755)
+        result["execute"] = subprocess.run(
+            [str(script)], capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+
+        hardlink = root / "hello-hardlink.sh"
+        os.link(script, hardlink)
+        result["hardlink"] = hardlink.stat().st_ino == script.stat().st_ino
+
+        symlink = root / "hello-symlink.sh"
+        symlink.symlink_to(script.name)
+        result["symlink"] = symlink.resolve() == script.resolve()
+
+        venv = root / "venv"
+        created = subprocess.run(
+            [sys.executable, "-m", "venv", "--copies", str(venv)],
+            capture_output=True, text=True, timeout=120,
+        )
+        result["stdlib_venv"] = {
+            "returncode": created.returncode,
+            "stderr": created.stderr[-2000:],
+            "python": (venv / "bin" / "python").is_file(),
+        }
+
+        uv_candidates = sorted((VOLUME_ROOT / "freevideo-h3").glob("**/uv"))
+        result["uv_candidates"] = [str(path) for path in uv_candidates[:10]]
+        if uv_candidates:
+            env = dict(
+                os.environ,
+                UV_PYTHON_INSTALL_DIR=str(root / "uv-python"),
+                UV_CACHE_DIR=str(root / "uv-cache"),
+                UV_LINK_MODE="copy",
+                UV_NO_CONFIG="1",
+                RUST_BACKTRACE="1",
+            )
+            uv_result = subprocess.run(
+                [
+                    str(uv_candidates[0]), "--verbose", "python", "install",
+                    "--no-bin", "--no-registry", "3.12.3",
+                ],
+                env=env, capture_output=True, text=True, timeout=180,
+            )
+            result["uv_python_install"] = {
+                "returncode": uv_result.returncode,
+                "stdout": uv_result.stdout[-4000:],
+                "stderr": uv_result.stderr[-8000:],
+            }
+        return result
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+@app.function(
+    image=worker_image,
     gpu=GPU_KIND,
     min_containers=0,
     max_containers=1,
@@ -344,6 +415,9 @@ def main(command: str = "identity"):
         )
         print(json.dumps(result, sort_keys=True))
         return
+    if command == "fs-probe":
+        print(json.dumps(volume_fs_probe.remote(), sort_keys=True))
+        return
     if command == "h3-bootstrap":
         result = h3_bootstrap_job.remote(
             "modal-h3-bootstrap",
@@ -351,5 +425,5 @@ def main(command: str = "identity"):
         )
         print(json.dumps(result, sort_keys=True))
         return
-    raise ValueError("command must be identity, native-health, h3-audit, h3-plan or h3-bootstrap")
+    raise ValueError("command must be identity, native-health, h3-audit, h3-plan, fs-probe or h3-bootstrap")
 
