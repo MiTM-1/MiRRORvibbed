@@ -49,4 +49,7 @@ jobs:
       - name: Deploy isolated scale-to-zero staging app
         if: inputs.action == 'deploy' || contains(github.event.head_commit.message, '[modal-deploy]')
         run: modal deploy modal_mirrorvidgen.py
+      - name: Run deployed native renderer health check
+        if: inputs.action == 'deploy' || contains(github.event.head_commit.message, '[modal-deploy]')
+        run: modal run modal_mirrorvidgen.py --command native-health
 
