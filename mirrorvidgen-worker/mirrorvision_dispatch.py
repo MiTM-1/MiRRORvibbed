@@ -52,6 +52,10 @@ def handler(job):
     data = job.get("input") or {}
     try:
         action = str(data.get("action") or "").strip().lower()
+        if action == "mirrorvision_health":
+            if not _healthy():
+                raise RuntimeError("MiRRORvision renderer dependencies are unavailable")
+            return _capabilities({"status": "healthy"})
         if action == "mirrorvision_render":
             if not _healthy():
                 raise RuntimeError("MiRRORvision renderer dependencies are unavailable")
