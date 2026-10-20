@@ -1,0 +1,47 @@
+name: Read-only RunPod migration audit
+on:
+  push:
+    branches: [dev/modal-migration-v136]
+    paths: ['.github/workflows/runpod-modal-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Verify RunPod endpoint and storage metadata without mutations
+        env:
+          RUNPOD_API_KEY: ${{ secrets.RUNPOD_API_KEY }}
+          PROD_ENDPOINT: r5xypdhn4sgccs
+          STAGE_ENDPOINT: 5dczz4dix8iai0
+        run: |
+          set -euo pipefail
+          test -n "$RUNPOD_API_KEY"
+          auth=(-H "Authorization: Bearer $RUNPOD_API_KEY")
+          prod="$(curl --fail --silent --show-error "${auth[@]}" "https://rest.runpod.io/v1/endpoints/$PROD_ENDPOINT")"
+          stage="$(curl --fail --silent --show-error "${auth[@]}" "https://rest.runpod.io/v1/endpoints/$STAGE_ENDPOINT")"
+          printf '%s' "$prod" | jq '{
+            id,name,computeType,gpuTypeIds,gpuCount,workersMin,workersMax,
+            idleTimeout,scalerType,scalerValue,executionTimeoutMs,
+            networkVolumeId,networkVolumeIds,templateId,
+            image:(.template.imageName // .template.image // .imageName // null)
+          }' | tee production-endpoint-safe.json
+          printf '%s' "$stage" | jq '{
+            id,name,computeType,gpuTypeIds,gpuCount,workersMin,workersMax,
+            idleTimeout,scalerType,scalerValue,executionTimeoutMs,
+            networkVolumeId,networkVolumeIds,templateId,
+            image:(.template.imageName // .template.image // .imageName // null)
+          }' | tee staging-endpoint-safe.json
+          curl --fail --silent --show-error "${auth[@]}" "https://rest.runpod.io/v1/networkvolumes" |
+            jq '[.[] | {id,name,size,dataCenterId,type}]' |
+            tee network-volumes-safe.json
+          curl --fail --silent --show-error "${auth[@]}" "https://api.runpod.ai/v2/$PROD_ENDPOINT/health" |
+            jq '{jobs,workers,throttled}' | tee production-health-safe.json
+          curl --fail --silent --show-error "${auth[@]}" "https://api.runpod.ai/v2/$STAGE_ENDPOINT/health" |
+            jq '{jobs,workers,throttled}' | tee staging-health-safe.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runpod-modal-readonly-audit
+          path: '*-safe.json'
