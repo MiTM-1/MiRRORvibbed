@@ -30,6 +30,7 @@ COPY h3_context_store.py /h3_context_store.py
 COPY h3_addon_handler.py /h3_addon_handler.py
 COPY audio_features.py /audio_features.py
 COPY mirrorvision_renderer.py /mirrorvision_renderer.py
+COPY mirrorvision_dispatch.py /mirrorvision_dispatch.py
 COPY mirrorvision_dispatch.py /handler.py
 COPY mirrorvision_cpu_check.py /mirrorvision_cpu_check.py
 COPY tests/ltx25-t2v-smoke-request.json /ltx25-t2v-template.json
@@ -39,7 +40,7 @@ COPY tests/ltx25-t2v-smoke-request.json /ltx25-t2v-template.json
 RUN cp /h3_addon_handler.py /h3_addon_handler_existing.py \
     && chmod +x /h3-setup.sh \
     && PYTHONPATH=/ /opt/venv/bin/python -m py_compile \
-       /handler.py /h3_baseline_handler.py /h3_addon_handler.py \
+       /handler.py /mirrorvision_dispatch.py /h3_baseline_handler.py /h3_addon_handler.py \
        /mirrorvision_renderer.py /audio_features.py /freevideo_backend.py \
        /h3_ref2va_backend.py /h3_ref2va_generation.py /ltx25_workflow.py \
        /workflow_compiler.py \
