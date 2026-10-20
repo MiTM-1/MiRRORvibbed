@@ -18,7 +18,7 @@ RUN rm -rf /opt/freevideo \
     && chmod +x /opt/freevideo/freevideo /opt/freevideo/setup.sh
 
 COPY extra_model_paths.yaml /comfyui/extra_model_paths.yaml
-COPY handler.py /h3_handler_existing.py
+COPY handler.py /h3_baseline_handler.py
 COPY freevideo_backend.py /freevideo_backend.py
 COPY h3_ref2va_backend.py /h3_ref2va_backend.py
 COPY h3_ref2va_generation.py /h3_ref2va_generation.py
@@ -39,7 +39,7 @@ COPY tests/ltx25-t2v-smoke-request.json /ltx25-t2v-template.json
 RUN cp /h3_addon_handler.py /h3_addon_handler_existing.py \
     && chmod +x /h3-setup.sh \
     && PYTHONPATH=/ /opt/venv/bin/python -m py_compile \
-       /handler.py /h3_handler_existing.py /h3_addon_handler.py \
+       /handler.py /h3_baseline_handler.py /h3_addon_handler.py \
        /mirrorvision_renderer.py /audio_features.py /freevideo_backend.py \
        /h3_ref2va_backend.py /h3_ref2va_generation.py /ltx25_workflow.py \
        /workflow_compiler.py \
