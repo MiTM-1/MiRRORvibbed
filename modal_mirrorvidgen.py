@@ -89,8 +89,8 @@ def _execute(job_id: str, payload: dict, runtime: str) -> dict:
     scaledown_window=2,
 )
 def native_job(job_id: str, payload: dict) -> dict:
-    if str(payload.get("action") or "").lower() != "mirrorvision_render":
-        raise ValueError("The CPU renderer only accepts mirrorvision_render")
+    if str(payload.get("action") or "").lower() not in {"mirrorvision_render", "mirrorvision_health"}:
+        raise ValueError("The CPU renderer only accepts MiRRORvision native actions")
     return _execute(job_id, payload, "native-cpu")
 
 
@@ -172,7 +172,7 @@ def main(command: str = "identity"):
     if command == "native-health":
         result = native_job.remote(
             "modal-native-health",
-            {"action": "mirrorvision_render", "healthcheck": True},
+            {"action": "mirrorvision_health"},
         )
         print(json.dumps(result, sort_keys=True))
         return
