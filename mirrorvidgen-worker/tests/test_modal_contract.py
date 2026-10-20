@@ -25,7 +25,9 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn("from handler import handler", self.source)
         self.assertIn('{"id": job_id, "input": payload}', self.source)
         self.assertIn("COPY mirrorvision_dispatch.py /handler.py", self.dockerfile)
-        self.assertIn("COPY handler.py /h3_handler_existing.py", self.dockerfile)
+        self.assertIn("COPY handler.py /h3_baseline_handler.py", self.dockerfile)
+        self.assertIn("import h3_baseline_handler as baseline", (ROOT / "mirrorvidgen-worker" / "h3_addon_handler.py").read_text(encoding="utf-8"))
+        self.assertIn("cp /h3_addon_handler.py /h3_addon_handler_existing.py", self.dockerfile)
 
     def test_volume_keeps_runpod_compatible_layout(self):
         self.assertIn('VOLUME_ROOT = Path("/runpod-volume")', self.source)
