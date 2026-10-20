@@ -43,6 +43,9 @@ class ModalContractTests(unittest.TestCase):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         self.assertTrue({"native_job", "h3_job", "submit", "status"}.issubset(names))
+        dispatcher = (ROOT / "mirrorvidgen-worker" / "mirrorvision_dispatch.py").read_text(encoding="utf-8")
+        self.assertIn('action == "mirrorvision_health"', dispatcher)
+        self.assertIn('{"action": "mirrorvision_health"}', self.source)
 
 
 if __name__ == "__main__":
