@@ -168,6 +168,23 @@ def h3_job(job_id: str, payload: dict) -> dict:
 
 @app.function(
     image=worker_image,
+    gpu=GPU_KIND,
+    volumes={str(VOLUME_ROOT): volume},
+    cpu=4,
+    memory=32768,
+    timeout=2100,
+    min_containers=0,
+    max_containers=1,
+    scaledown_window=2,
+)
+def h3_bootstrap_job(job_id: str, payload: dict) -> dict:
+    if str(payload.get("action") or "").strip().lower() != "h3_install":
+        raise ValueError("The bounded bootstrap function only accepts h3_install")
+    return _execute(job_id, payload, "h3-bootstrap-gpu")
+
+
+@app.function(
+    image=worker_image,
     volumes={str(VOLUME_ROOT): volume},
     cpu=2,
     memory=4096,
@@ -264,7 +281,7 @@ def main(command: str = "identity"):
         print(json.dumps(result, sort_keys=True))
         return
     if command == "h3-bootstrap":
-        result = h3_job.remote(
+        result = h3_bootstrap_job.remote(
             "modal-h3-bootstrap",
             {"action": "h3_install", "accept_model_license": True},
         )
