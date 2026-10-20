@@ -26,8 +26,10 @@ STATUS_ROOT = VOLUME_ROOT / "modal-jobs"
 app = modal.App(APP_NAME)
 volume = modal.Volume.from_name(VOLUME_NAME, create_if_missing=True)
 
+WORKER_CONTEXT = Path(__file__).parent / "mirrorvidgen-worker"
 worker_image = modal.Image.from_dockerfile(
-    Path(__file__).parent / "mirrorvidgen-worker" / "Dockerfile.modal"
+    WORKER_CONTEXT / "Dockerfile.modal",
+    context_dir=WORKER_CONTEXT,
 )
 
 
