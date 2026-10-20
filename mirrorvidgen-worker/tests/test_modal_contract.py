@@ -52,6 +52,8 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn("def _ensure_comfy()", self.source)
         self.assertIn('"/comfyui/main.py"', self.source)
         self.assertIn("if _requires_comfy(payload):", self.source)
+        self.assertIn('"h3_reference", "ref2va"', self.source)
+        self.assertIn('action in {"h3_comfy_runtime_audit", "h3_ref2va_schema_audit", "h3_ref2va_preflight"}', self.source)
         dispatcher = (ROOT / "mirrorvidgen-worker" / "mirrorvision_dispatch.py").read_text(encoding="utf-8")
         self.assertIn('action == "mirrorvision_health"', dispatcher)
         self.assertIn('{"action": "mirrorvision_health"}', self.source)
