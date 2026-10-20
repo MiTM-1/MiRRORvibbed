@@ -20,7 +20,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-6"
+MIGRATION_BUILD = "v136-modal-staging-7"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -282,23 +282,49 @@ def volume_fs_probe() -> dict:
         ).stdout.strip()
 
         hardlink = root / "hello-hardlink.sh"
-        os.link(script, hardlink)
-        result["hardlink"] = hardlink.stat().st_ino == script.stat().st_ino
+        try:
+            os.link(script, hardlink)
+            result["hardlink"] = {
+                "supported": hardlink.stat().st_ino == script.stat().st_ino,
+            }
+        except OSError as error:
+            result["hardlink"] = {
+                "supported": False,
+                "errno": error.errno,
+                "error": str(error),
+            }
 
         symlink = root / "hello-symlink.sh"
-        symlink.symlink_to(script.name)
-        result["symlink"] = symlink.resolve() == script.resolve()
+        try:
+            symlink.symlink_to(script.name)
+            result["symlink"] = {
+                "supported": symlink.resolve() == script.resolve(),
+            }
+        except OSError as error:
+            result["symlink"] = {
+                "supported": False,
+                "errno": error.errno,
+                "error": str(error),
+            }
 
         venv = root / "venv"
-        created = subprocess.run(
-            [sys.executable, "-m", "venv", "--copies", str(venv)],
-            capture_output=True, text=True, timeout=120,
-        )
-        result["stdlib_venv"] = {
-            "returncode": created.returncode,
-            "stderr": created.stderr[-2000:],
-            "python": (venv / "bin" / "python").is_file(),
-        }
+        try:
+            created = subprocess.run(
+                [sys.executable, "-m", "venv", "--copies", str(venv)],
+                capture_output=True, text=True, timeout=120,
+            )
+            result["stdlib_venv"] = {
+                "returncode": created.returncode,
+                "stdout": created.stdout[-2000:],
+                "stderr": created.stderr[-4000:],
+                "python": (venv / "bin" / "python").is_file(),
+            }
+        except Exception as error:
+            result["stdlib_venv"] = {
+                "returncode": None,
+                "error": repr(error),
+                "python": (venv / "bin" / "python").is_file(),
+            }
 
         uv_candidates = sorted((VOLUME_ROOT / "freevideo-h3").glob("**/uv"))
         result["uv_candidates"] = [str(path) for path in uv_candidates[:10]]
