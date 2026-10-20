@@ -19,6 +19,7 @@ on:
           - validate
           - deploy
           - audit
+          - plan
           - bootstrap
 
 concurrency:
@@ -53,12 +54,15 @@ jobs:
           python -m compileall -q mirrorvidgen-worker modal_mirrorvidgen.py
           python -m unittest discover -s mirrorvidgen-worker/tests -p 'test_*.py' -v
       - name: Deploy isolated scale-to-zero staging app
-        if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-deploy]')
+        if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'plan' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-deploy]')
         run: modal deploy modal_mirrorvidgen.py
       - name: Run deployed native renderer health check
         if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-deploy]')
         run: modal run modal_mirrorvidgen.py --command native-health
 
+      - name: Run read-only Modal H3 setup plan
+        if: inputs.action == 'plan' || contains(github.event.head_commit.message, '[modal-plan]')
+        run: modal run modal_mirrorvidgen.py --command h3-plan
       - name: Run read-only Modal H3 volume audit
         if: inputs.action == 'audit' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-audit]')
         run: modal run modal_mirrorvidgen.py --command h3-audit
