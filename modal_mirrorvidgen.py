@@ -299,6 +299,13 @@ def main(command: str = "identity"):
         }
         print(json.dumps(result, sort_keys=True))
         return
+    if command == "h3-plan":
+        result = h3_job.remote(
+            "modal-h3-setup-plan",
+            {"action": "h3_setup_plan"},
+        )
+        print(json.dumps(result, sort_keys=True))
+        return
     if command == "h3-bootstrap":
         result = h3_bootstrap_job.remote(
             "modal-h3-bootstrap",
@@ -306,5 +313,5 @@ def main(command: str = "identity"):
         )
         print(json.dumps(result, sort_keys=True))
         return
-    raise ValueError("command must be identity, native-health, h3-audit or h3-bootstrap")
+    raise ValueError("command must be identity, native-health, h3-audit, h3-plan or h3-bootstrap")
 
