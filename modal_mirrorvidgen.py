@@ -15,6 +15,7 @@ import uuid
 from pathlib import Path
 
 import modal
+import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
@@ -31,6 +32,60 @@ worker_image = modal.Image.from_dockerfile(
     WORKER_CONTEXT / "Dockerfile.modal",
     context_dir=WORKER_CONTEXT,
 )
+
+
+_comfy_process = None
+
+
+def _requires_comfy(payload: dict) -> bool:
+    action = str(payload.get("action") or "").strip().lower()
+    if action in {
+        "h3_install", "h3_runtime_audit", "h3_status", "h3_setup_plan",
+        "h3_diagnostics", "h3_generation_diagnostics", "h3_gpu_check",
+        "h3_ref2va_install", "h3_ref2va_install_plan", "h3_ref2va_status",
+    }:
+        return False
+    engine = str(payload.get("engine") or payload.get("model_engine") or "").strip().lower()
+    mode = str(payload.get("mode") or "").strip().lower()
+    if engine in {"freevideo_h3", "h3", "minimax_h3", "minimax-h3"} or mode.startswith("h3_"):
+        return False
+    return True
+
+
+def _ensure_comfy() -> None:
+    global _comfy_process
+    try:
+        if requests.get("http://127.0.0.1:8188/system_stats", timeout=2).ok:
+            return
+    except requests.RequestException:
+        pass
+
+    log_path = Path("/tmp/modal-comfyui.log")
+    log_handle = log_path.open("ab")
+    _comfy_process = subprocess.Popen(
+        [
+            "/opt/venv/bin/python", "-u", "/comfyui/main.py",
+            "--disable-auto-launch", "--disable-metadata", "--listen",
+            "--verbose", "INFO", "--log-stdout",
+        ],
+        cwd="/comfyui",
+        stdout=log_handle,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    deadline = time.time() + 300
+    while time.time() < deadline:
+        if _comfy_process.poll() is not None:
+            tail = log_path.read_text(encoding="utf-8", errors="replace")[-6000:]
+            raise RuntimeError(f"ComfyUI exited during Modal startup: {tail}")
+        try:
+            if requests.get("http://127.0.0.1:8188/system_stats", timeout=3).ok:
+                return
+        except requests.RequestException:
+            pass
+        time.sleep(1)
+    tail = log_path.read_text(encoding="utf-8", errors="replace")[-6000:]
+    raise RuntimeError(f"ComfyUI did not become ready on Modal: {tail}")
 
 
 def _load_handler():
@@ -106,6 +161,8 @@ def native_job(job_id: str, payload: dict) -> dict:
     scaledown_window=2,
 )
 def h3_job(job_id: str, payload: dict) -> dict:
+    if _requires_comfy(payload):
+        _ensure_comfy()
     return _execute(job_id, payload, "h3-gpu")
 
 
