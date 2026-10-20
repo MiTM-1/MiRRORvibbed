@@ -19,7 +19,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-3"
+MIGRATION_BUILD = "v136-modal-staging-4"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -107,6 +107,22 @@ def _ensure_comfy() -> None:
     raise RuntimeError(f"ComfyUI did not become ready on Modal: {tail}")
 
 
+def _enable_modal_rss_guard() -> None:
+    """Keep the pinned persistent FreeVideo source aligned with the Modal patch."""
+    os.environ["FREEVIDEO_ALLOW_RSS_GUARD"] = "1"
+    patched = Path("/opt/freevideo/freevideo_engine/ram.py")
+    persistent = VOLUME_ROOT / "freevideo-h3" / "source" / "freevideo_engine" / "ram.py"
+    if not patched.is_file() or not persistent.is_file():
+        return
+    patched_bytes = patched.read_bytes()
+    if persistent.read_bytes() == patched_bytes:
+        return
+    temp = persistent.with_suffix(".modal.tmp")
+    temp.write_bytes(patched_bytes)
+    temp.replace(persistent)
+    volume.commit()
+
+
 def _load_handler():
     if "/" not in sys.path:
         sys.path.insert(0, "/")
@@ -180,7 +196,7 @@ def native_job(job_id: str, payload: dict) -> dict:
     scaledown_window=2,
 )
 def h3_job(job_id: str, payload: dict) -> dict:
-    os.environ["FREEVIDEO_ALLOW_RSS_GUARD"] = "1"
+    _enable_modal_rss_guard()
     if _requires_comfy(payload):
         _ensure_comfy()
     return _execute(job_id, payload, "h3-gpu")
@@ -198,7 +214,7 @@ def h3_job(job_id: str, payload: dict) -> dict:
     scaledown_window=2,
 )
 def h3_bootstrap_job(job_id: str, payload: dict) -> dict:
-    os.environ["FREEVIDEO_ALLOW_RSS_GUARD"] = "1"
+    _enable_modal_rss_guard()
     if str(payload.get("action") or "").strip().lower() != "h3_install":
         raise ValueError("The bounded bootstrap function only accepts h3_install")
     return _execute(job_id, payload, "h3-bootstrap-gpu")
