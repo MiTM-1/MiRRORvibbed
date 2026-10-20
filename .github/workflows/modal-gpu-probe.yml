@@ -1,0 +1,77 @@
+name: Modal RTX PRO 6000 capability probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/modal-migration-v136
+    paths:
+      - .github/workflows/modal-gpu-probe.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Modal SDK
+        run: python -m pip install --disable-pip-version-check "modal==1.6.2"
+
+      - name: Configure Modal credentials
+        env:
+          MODAL_TOKEN_COMMAND: ${{ secrets.MODAL_TOKEN_COMMAND }}
+        run: |
+          test -n "$MODAL_TOKEN_COMMAND"
+          eval "$MODAL_TOKEN_COMMAND"
+          modal profile activate mitm-1
+
+      - name: Create exact-GPU probe
+        run: |
+          cat > /tmp/modal_gpu_probe.py <<'PY'
+          import json
+          import subprocess
+          import modal
+
+          app = modal.App("mirrorvidgen-rtx-pro-6000-probe")
+
+          @app.function(
+              gpu="RTX-PRO-6000",
+              min_containers=0,
+              max_containers=1,
+              scaledown_window=2,
+              timeout=90,
+          )
+          def probe():
+              query = subprocess.check_output(
+                  [
+                      "nvidia-smi",
+                      "--query-gpu=name,memory.total,driver_version",
+                      "--format=csv,noheader,nounits",
+                  ],
+                  text=True,
+              ).strip()
+              name, memory_mib, driver = [part.strip() for part in query.split(",", 2)]
+              return {
+                  "gpu_name": name,
+                  "memory_total_mib": int(memory_mib),
+                  "driver_version": driver,
+              }
+
+          @app.local_entrypoint()
+          def main():
+              result = probe.remote()
+              print("MODAL_GPU_PROBE=" + json.dumps(result, sort_keys=True))
+              if "RTX PRO 6000" not in result["gpu_name"].upper():
+                  raise RuntimeError(f"Unexpected GPU: {result['gpu_name']}")
+              if result["memory_total_mib"] < 90000:
+                  raise RuntimeError(
+                      f"Expected 96 GB-class GPU, got {result['memory_total_mib']} MiB"
+                  )
+          PY
+
+      - name: Run one scale-to-zero GPU probe
+        run: modal run /tmp/modal_gpu_probe.py
