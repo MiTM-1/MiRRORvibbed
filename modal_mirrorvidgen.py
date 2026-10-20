@@ -47,6 +47,24 @@ def _requires_comfy(payload: dict) -> bool:
         return False
     engine = str(payload.get("engine") or payload.get("model_engine") or "").strip().lower()
     mode = str(payload.get("mode") or "").strip().lower()
+    workflow = str(payload.get("workflow") or "").strip().lower()
+    explicit = str(payload.get("h3_workflow") or payload.get("model_workflow") or "").strip().lower()
+    ref_modes = {
+        "h3_reference", "reference_to_video", "character_to_video",
+        "reference_video", "reference_to_audio_video", "ref2va",
+    }
+    h3_engines = {
+        "mirrorromax-h3", "mirrorromax_h3",
+        "freevideo_h3", "h3", "minimax_h3", "minimax-h3",
+    }
+    if (
+        action in {"h3_comfy_runtime_audit", "h3_ref2va_schema_audit", "h3_ref2va_preflight"}
+        or workflow == "ref2va"
+        or explicit == "ref2va"
+        or mode in {"h3_reference", "ref2va"}
+        or (engine in h3_engines and mode in ref_modes)
+    ):
+        return True
     if engine in {"freevideo_h3", "h3", "minimax_h3", "minimax-h3"} or mode.startswith("h3_"):
         return False
     return True
