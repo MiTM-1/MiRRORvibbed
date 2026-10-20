@@ -21,6 +21,10 @@ on:
           - audit
           - bootstrap
 
+concurrency:
+  group: modal-staging-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
