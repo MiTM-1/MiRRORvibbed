@@ -1,6 +1,13 @@
 name: Deploy isolated Modal staging
 
 on:
+  push:
+    branches: [dev/modal-migration-v136]
+    paths:
+      - "modal_mirrorvidgen.py"
+      - "mirrorvidgen-worker/Dockerfile.modal"
+      - "mirrorvidgen-worker/tests/test_modal_contract.py"
+      - ".github/workflows/modal-staging.yml"
   workflow_dispatch:
     inputs:
       action:
