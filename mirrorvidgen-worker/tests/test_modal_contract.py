@@ -34,10 +34,13 @@ class ModalContractTests(unittest.TestCase):
         setup = (ROOT / "mirrorvidgen-worker" / "h3-setup.sh").read_text(encoding="utf-8")
         self.assertIn("FREEVIDEO_PYTHON=/opt/venv/bin/python", self.dockerfile)
         self.assertIn("FREEVIDEO_UV_LINK_MODE=copy", self.dockerfile)
+        self.assertIn("FREEVIDEO_USE_PIP=1", self.dockerfile)
         self.assertIn("Applying Modal Volume Python-runtime compatibility fix", setup)
         self.assertIn("requested = self.env.get('FREEVIDEO_PYTHON')", setup)
         self.assertIn("[requested, '-m', 'venv', '--copies', folder]", setup)
         self.assertIn("Using verified Modal image Python", setup)
+        self.assertIn("FREEVIDEO_USE_PIP", setup)
+        self.assertIn("args = [executable, '-m', 'pip'", setup)
         self.assertIn("UV_LINK_MODE=os.environ.get('FREEVIDEO_UV_LINK_MODE'", setup)
 
     def test_existing_worker_contract_is_preserved(self):
