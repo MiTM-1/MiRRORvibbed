@@ -146,6 +146,30 @@ if install_old in text:
 elif "Using verified Modal image Python" not in text:
     raise SystemExit("Pinned FreeVideo Python installer layout changed; refusing an unsafe Modal patch")
 
+command_old = """    def command(self, label, args, env=None, cwd=None):
+        from .ram import ProcessMemory
+"""
+command_new = """    def command(self, label, args, env=None, cwd=None):
+        if (self.env.get('FREEVIDEO_USE_PIP') == '1' and len(args) >= 3 and
+                str(args[0]) == str(self.env.get('FREEVIDEO_UV')) and
+                str(args[1]) == 'pip'):
+            tail = list(args[3:])
+            executable = None
+            if '--python' in tail:
+                position = tail.index('--python')
+                if position + 1 >= len(tail):
+                    raise RuntimeError('Malformed uv pip command has no Python path')
+                executable = str(tail[position + 1])
+                del tail[position:position + 2]
+            executable = executable or str(self.pythons['engine'])
+            args = [executable, '-m', 'pip', str(args[2]), *tail]
+        from .ram import ProcessMemory
+"""
+if command_old in text:
+    text = text.replace(command_old, command_new, 1)
+elif "FREEVIDEO_USE_PIP" not in text:
+    raise SystemExit("Pinned FreeVideo command layout changed; refusing an unsafe Modal patch")
+
 path.write_text(text, encoding="utf-8")
 PY
 fi
