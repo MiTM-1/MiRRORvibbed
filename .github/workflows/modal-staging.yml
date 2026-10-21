@@ -7,6 +7,7 @@ on:
       - "modal_mirrorvidgen.py"
       - "mirrorvidgen-worker/Dockerfile.modal"
       - "mirrorvidgen-worker/h3-setup.sh"
+      - "mirrorvidgen-worker/patch_freevideo_modal.py"
       - "mirrorvidgen-worker/tests/test_modal_contract.py"
       - ".github/workflows/modal-staging.yml"
   workflow_dispatch:
@@ -24,6 +25,7 @@ on:
           - fs-probe
           - bootstrap
           - h3-smoke
+          - h3-output-audit
 
 concurrency:
   group: modal-staging-${{ github.ref }}
@@ -57,7 +59,7 @@ jobs:
           python -m compileall -q mirrorvidgen-worker modal_mirrorvidgen.py
           python -m unittest discover -s mirrorvidgen-worker/tests -p 'test_*.py' -v
       - name: Deploy isolated scale-to-zero staging app
-        if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'plan' || inputs.action == 'fs-probe' || inputs.action == 'bootstrap' || inputs.action == 'h3-smoke' || contains(github.event.head_commit.message, '[modal-deploy]') || contains(github.event.head_commit.message, '[modal-fs-probe]') || contains(github.event.head_commit.message, '[modal-bootstrap]') || contains(github.event.head_commit.message, '[modal-h3-smoke]')
+        if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'plan' || inputs.action == 'fs-probe' || inputs.action == 'bootstrap' || inputs.action == 'h3-smoke' || inputs.action == 'h3-output-audit' || contains(github.event.head_commit.message, '[modal-deploy]') || contains(github.event.head_commit.message, '[modal-fs-probe]') || contains(github.event.head_commit.message, '[modal-bootstrap]') || contains(github.event.head_commit.message, '[modal-h3-smoke]') || contains(github.event.head_commit.message, '[modal-output-audit]')
         run: modal deploy modal_mirrorvidgen.py
       - name: Run deployed native renderer health check
         if: inputs.action == 'deploy' || inputs.action == 'audit' || inputs.action == 'bootstrap' || contains(github.event.head_commit.message, '[modal-deploy]')
@@ -81,3 +83,6 @@ jobs:
       - name: Run minimum H3 image-to-video smoke generation
         if: inputs.action == 'h3-smoke' || contains(github.event.head_commit.message, '[modal-h3-smoke]')
         run: modal run modal_mirrorvidgen.py --command h3-smoke
+      - name: Audit retained H3 smoke MP4 without GPU
+        if: inputs.action == 'h3-output-audit' || contains(github.event.head_commit.message, '[modal-output-audit]')
+        run: modal run modal_mirrorvidgen.py --command h3-output-audit
