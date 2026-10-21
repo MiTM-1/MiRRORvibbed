@@ -84,6 +84,18 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn('action == "mirrorvision_health"', dispatcher)
         self.assertIn('{"action": "mirrorvision_health"}', self.source)
 
+    def test_private_preview_api_is_proxy_authenticated_and_gpu_locked(self):
+        self.assertIn('@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)', self.source)
+        self.assertIn('def api(request: dict)', self.source)
+        self.assertIn('"gpuSubmissionEnabled": False', self.source)
+        self.assertIn('"GPU submissions are disabled on the isolated Modal website preview."', self.source)
+        self.assertIn('str(payload.get("action") or "").strip().lower() != "mirrorvision_render"', self.source)
+        self.assertIn('candidate.hostname == allowed.hostname', self.source)
+        self.assertIn('modal.FunctionCall.from_id(call_id).cancel()', self.source)
+        self.assertIn('_notify_callback(webhook, state)', self.source)
+        self.assertIn('"capabilities", "mirrorvision_health", "h3_runtime_audit", "h3_ref2va_status"', self.source)
+        self.assertIn('"mirrorvidgen-modal-preview.mitm1.chatgpt.site"', self.source)
+
 
 if __name__ == "__main__":
     unittest.main()
