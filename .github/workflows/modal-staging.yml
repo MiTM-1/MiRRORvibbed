@@ -6,6 +6,7 @@ on:
     paths:
       - "modal_mirrorvidgen.py"
       - "mirrorvidgen-worker/Dockerfile.modal"
+      - "mirrorvidgen-worker/h3-setup.sh"
       - "mirrorvidgen-worker/tests/test_modal_contract.py"
       - ".github/workflows/modal-staging.yml"
   workflow_dispatch:
