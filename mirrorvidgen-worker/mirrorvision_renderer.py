@@ -16,11 +16,20 @@ FPS = 24
 RENDERER_VERSION = 3
 HTTP_HEADERS = {'User-Agent': 'MiRRORvidgen-Worker/1.0'}
 
+def site_headers(content_type=None):
+    headers = dict(HTTP_HEADERS)
+    bearer = os.environ.get('MIRRORVISION_SITE_ACCESS_BEARER', '').strip()
+    if bearer:
+        headers['OAI-Sites-Authorization'] = f'Bearer {bearer}'
+    if content_type:
+        headers['Content-Type'] = content_type
+    return headers
+
 def upload_result(url, data):
     """Retry only transient callback races; never report a render as complete
     until the durable Site store has accepted the exact MP4 bytes."""
     for attempt in range(8):
-        request=urllib.request.Request(url,data=data,headers={**HTTP_HEADERS, 'Content-Type':'video/mp4'},method='POST')
+        request=urllib.request.Request(url,data=data,headers=site_headers('video/mp4'),method='POST')
         try:
             with urllib.request.urlopen(request,timeout=180) as response:
                 if response.status==200: return
@@ -685,7 +694,7 @@ def handle(payload):
         # Do not follow redirects to arbitrary hosts.
         class NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, *args): return None
-        with urllib.request.build_opener(NoRedirect).open(urllib.request.Request(url, headers=HTTP_HEADERS), timeout=90) as response, open(path, 'wb') as dest:
+        with urllib.request.build_opener(NoRedirect).open(urllib.request.Request(url, headers=site_headers()), timeout=90) as response, open(path, 'wb') as dest:
             size=0
             while chunk:=response.read(1024*1024):
                 size+=len(chunk)
