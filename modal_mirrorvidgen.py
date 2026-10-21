@@ -6,6 +6,8 @@ container lifecycle with Modal Functions and a persistent Modal Volume.
 """
 from __future__ import annotations
 
+import base64
+import io
 import json
 import os
 import shutil
@@ -20,7 +22,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-13"
+MIGRATION_BUILD = "v136-modal-staging-14"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -518,5 +520,45 @@ def main(command: str = "identity"):
         )
         print(json.dumps(result, sort_keys=True))
         return
-    raise ValueError("command must be identity, native-health, h3-audit, h3-plan, fs-probe or h3-bootstrap")
+    if command == "h3-smoke":
+        from PIL import Image, ImageDraw
+
+        image = Image.new("RGB", (256, 256), "#13040b")
+        draw = ImageDraw.Draw(image)
+        draw.ellipse((52, 52, 204, 204), fill="#e5195b", outline="#ffd18a", width=8)
+        draw.rectangle((40, 192, 216, 216), fill="#ffe3a8")
+        buffer = io.BytesIO()
+        image.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        job_id = "modal-h3-smoke-" + uuid.uuid4().hex[:12]
+        result = h3_job.remote(
+            job_id,
+            {
+                "engine": "freevideo_h3",
+                "mode": "h3_i2v",
+                "prompt": (
+                    "Preserve the supplied abstract artwork exactly. Animate the red circular "
+                    "light with one gentle cinematic pulse and subtle camera depth. Do not add "
+                    "people, animals, lettering, logos, or unrelated objects."
+                ),
+                "duration_seconds": 1.625,
+                "fps": 24,
+                "width": 256,
+                "height": 256,
+                "quality": "smoke",
+                "seed": 136,
+                "images": [{"name": "modal-smoke.png", "role": "first", "data": encoded}],
+            },
+        )
+        output = result.get("output") if isinstance(result, dict) else None
+        if isinstance(output, dict):
+            for item in output.get("outputs") or []:
+                if isinstance(item, dict) and isinstance(item.get("data"), str):
+                    item["data"] = "<omitted from CI log>"
+        print(json.dumps(result, sort_keys=True))
+        return
+    raise ValueError(
+        "command must be identity, native-health, h3-audit, h3-plan, fs-probe, "
+        "h3-bootstrap or h3-smoke"
+    )
 
