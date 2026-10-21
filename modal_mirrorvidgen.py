@@ -24,7 +24,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-18"
+MIGRATION_BUILD = "v136-modal-staging-19"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -191,6 +191,25 @@ def _callback_allowed(webhook: str) -> bool:
         and candidate.username is None
         and candidate.password is None
     )
+
+
+def _private_site_bearer_allowed(site_access_bearer: str) -> bool:
+    if len(site_access_bearer) < 20:
+        return False
+    origin = os.environ.get(
+        "MIRRORVISION_SITE_ORIGIN",
+        "https://mirrorvidgen-modal-preview.mitm1.chatgpt.site",
+    ).rstrip("/")
+    try:
+        response = requests.get(
+            f"{origin}/",
+            headers={"OAI-Sites-Authorization": f"Bearer {site_access_bearer}"},
+            timeout=15,
+            allow_redirects=False,
+        )
+        return 200 <= response.status_code < 300
+    except requests.RequestException:
+        return False
 
 
 def _notify_callback(webhook: str, state: dict) -> None:
@@ -615,9 +634,13 @@ def cancel(job_id: str) -> dict:
     max_containers=1,
     scaledown_window=2,
 )
-@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
+@modal.fastapi_endpoint(method="POST")
 def api(request: dict) -> dict:
     from fastapi import HTTPException
+
+    site_access_bearer = str(request.get("siteAccessBearer") or "").strip()
+    if not _private_site_bearer_allowed(site_access_bearer):
+        raise HTTPException(status_code=401, detail="Private Site authentication failed.")
 
     operation = str(request.get("op") or "").strip().lower()
     if operation == "health":
@@ -645,12 +668,6 @@ def api(request: dict) -> dict:
         webhook = str(request.get("webhook") or "")
         if webhook and not _callback_allowed(webhook):
             raise HTTPException(status_code=422, detail="The callback origin is not allowed.")
-        site_access_bearer = str(request.get("siteAccessBearer") or "").strip()
-        if len(site_access_bearer) < 20:
-            raise HTTPException(
-                status_code=422,
-                detail="A private Site access bearer is required for native rendering.",
-            )
         return submit.remote(payload, webhook, site_access_bearer)
     if operation == "status":
         job_id = str(request.get("id") or "")
