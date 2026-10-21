@@ -46,4 +46,36 @@ new = """        self.samples += 1
 if old not in source:
     raise SystemExit("FreeVideo ram.py no longer matches the audited pinned source")
 source = source.replace(old, new, 1)
+
+result_old = """    def result(self):
+        if self.windows is not None:
+            return self.windows.result()
+        return {'process_tree_peak_rss_bytes': self.peak_rss,
+                'inference_peak_working_pss_bytes': self.peak_inference_pss,
+                'process_tree_peak_guard_bytes': self.peak_pss,
+                'process_tree_guard_complete': self.pss_complete, 'ram_guard_metric': 'PSS',
+                'process_tree_peak_pss_bytes': self.peak_pss,
+                'process_tree_pss_complete': self.pss_complete,
+"""
+
+result_new = """    def result(self):
+        if self.windows is not None:
+            return self.windows.result()
+        rss_fallback = bool(not self.pss_complete and self.samples > 0
+                            and os.environ.get('FREEVIDEO_ALLOW_RSS_GUARD') == '1')
+        peak_guard = self.peak_rss if rss_fallback else self.peak_pss
+        guard_complete = True if rss_fallback else self.pss_complete
+        return {'process_tree_peak_rss_bytes': self.peak_rss,
+                'inference_peak_working_pss_bytes': (self.peak_rss if rss_fallback
+                                                     else self.peak_inference_pss),
+                'process_tree_peak_guard_bytes': peak_guard,
+                'process_tree_guard_complete': guard_complete,
+                'ram_guard_metric': 'RSS-fallback' if rss_fallback else 'PSS',
+                'process_tree_peak_pss_bytes': self.peak_pss,
+                'process_tree_pss_complete': self.pss_complete,
+"""
+
+if result_old not in source:
+    raise SystemExit("FreeVideo ram.py result layout no longer matches the audited pinned source")
+source = source.replace(result_old, result_new, 1)
 path.write_text(source, encoding="utf-8")
