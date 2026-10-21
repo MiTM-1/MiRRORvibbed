@@ -172,6 +172,28 @@ elif "FREEVIDEO_USE_PIP" not in text:
 
 path.write_text(text, encoding="utf-8")
 PY
+
+  echo "Applying Modal model-support installer compatibility fix..."
+  "$FREEVIDEO_PYTHON" - "$SOURCE/freevideo_engine/install.py" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8")
+old = """            command = ([env['FREEVIDEO_UV'], 'pip', 'install', '--python', sys.executable]
+                       if env.get('FREEVIDEO_UV') else [sys.executable, '-m', 'pip', 'install'])
+"""
+new = """            command = ([sys.executable, '-m', 'pip', 'install']
+                       if env.get('FREEVIDEO_USE_PIP') == '1' else
+                       [env['FREEVIDEO_UV'], 'pip', 'install', '--python', sys.executable]
+                       if env.get('FREEVIDEO_UV') else [sys.executable, '-m', 'pip', 'install'])
+"""
+if old in text:
+    text = text.replace(old, new, 1)
+elif "if env.get('FREEVIDEO_USE_PIP') == '1' else" not in text:
+    raise SystemExit("Pinned FreeVideo model-support installer changed; refusing an unsafe Modal patch")
+path.write_text(text, encoding="utf-8")
+PY
 fi
 
 echo "Repairing executable permissions on any retained RunPod runtime files..."
