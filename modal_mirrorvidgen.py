@@ -7,6 +7,7 @@ container lifecycle with Modal Functions and a persistent Modal Volume.
 from __future__ import annotations
 
 import base64
+import hashlib
 import io
 import json
 import os
@@ -22,7 +23,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-14"
+MIGRATION_BUILD = "v136-modal-staging-15"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -258,6 +259,52 @@ def maintenance_job(job_id: str, payload: dict) -> dict:
     if action not in {"h3_runtime_audit", "h3_ref2va_status"}:
         raise ValueError("The CPU maintenance function only accepts read-only audit actions")
     return _execute(job_id, payload, "maintenance-cpu")
+
+
+@app.function(
+    image=worker_image,
+    volumes={str(VOLUME_ROOT): volume},
+    cpu=2,
+    memory=4096,
+    timeout=300,
+    min_containers=0,
+    max_containers=1,
+    scaledown_window=2,
+)
+def h3_output_audit() -> dict:
+    candidates = sorted(
+        (VOLUME_ROOT / "results").glob("modal-h3-smoke-*/mirrorvidgen_h3.mp4"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        return {"status": "h3_output_audit", "found": False}
+    target = candidates[0]
+    probe = subprocess.run(
+        [
+            "ffprobe", "-v", "error", "-show_entries",
+            "format=duration,size:stream=index,codec_type,codec_name,width,height,avg_frame_rate,channels",
+            "-of", "json", str(target),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    digest = hashlib.sha256()
+    with target.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return {
+        "status": "h3_output_audit",
+        "found": True,
+        "path": str(target),
+        "bytes": target.stat().st_size,
+        "sha256": digest.hexdigest(),
+        "ffprobe_returncode": probe.returncode,
+        "ffprobe": json.loads(probe.stdout) if probe.returncode == 0 else None,
+        "ffprobe_error": probe.stderr[-2000:] if probe.returncode else None,
+    }
 
 
 @app.function(
@@ -520,6 +567,9 @@ def main(command: str = "identity"):
         )
         print(json.dumps(result, sort_keys=True))
         return
+    if command == "h3-output-audit":
+        print(json.dumps(h3_output_audit.remote(), sort_keys=True))
+        return
     if command == "h3-smoke":
         from PIL import Image, ImageDraw
 
@@ -559,6 +609,6 @@ def main(command: str = "identity"):
         return
     raise ValueError(
         "command must be identity, native-health, h3-audit, h3-plan, fs-probe, "
-        "h3-bootstrap or h3-smoke"
+        "h3-bootstrap, h3-output-audit or h3-smoke"
     )
 
