@@ -38,6 +38,13 @@ worker_image = modal.Image.from_dockerfile(
     WORKER_CONTEXT / "Dockerfile.modal",
     context_dir=WORKER_CONTEXT,
 )
+# Keep the public control plane independent from the multi-gigabyte H3 image.
+# Sites has a bounded outbound request window, so the gateway must cold-start
+# quickly while the durable native/H3 workers continue to scale independently.
+control_image = modal.Image.debian_slim(python_version="3.12").pip_install(
+    "fastapi==0.115.6",
+    "requests==2.32.5",
+)
 
 
 _comfy_process = None
@@ -583,7 +590,7 @@ def gpu_identity() -> dict:
     return result
 
 
-@app.function(image=worker_image, volumes={str(VOLUME_ROOT): volume}, timeout=300)
+@app.function(image=control_image, volumes={str(VOLUME_ROOT): volume}, timeout=300)
 def submit(payload: dict, webhook: str = "", site_access_bearer: str = "") -> dict:
     action = str(payload.get("action") or "").strip().lower()
     job_id = f"modal-{uuid.uuid4().hex}"
@@ -603,7 +610,7 @@ def submit(payload: dict, webhook: str = "", site_access_bearer: str = "") -> di
     return state
 
 
-@app.function(image=worker_image, volumes={str(VOLUME_ROOT): volume}, timeout=60)
+@app.function(image=control_image, volumes={str(VOLUME_ROOT): volume}, timeout=60)
 def status(job_id: str) -> dict:
     volume.reload()
     path = STATUS_ROOT / f"{job_id}.json"
@@ -612,7 +619,7 @@ def status(job_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@app.function(image=worker_image, volumes={str(VOLUME_ROOT): volume}, timeout=60)
+@app.function(image=control_image, volumes={str(VOLUME_ROOT): volume}, timeout=60)
 def cancel(job_id: str) -> dict:
     current = status.remote(job_id)
     call_id = str(current.get("functionCallId") or "")
@@ -627,8 +634,7 @@ def cancel(job_id: str) -> dict:
 
 
 @app.function(
-    image=worker_image,
-    volumes={str(VOLUME_ROOT): volume},
+    image=control_image,
     cpu=1,
     memory=1024,
     timeout=300,
