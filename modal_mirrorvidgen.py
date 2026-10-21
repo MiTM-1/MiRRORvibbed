@@ -20,7 +20,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-9"
+MIGRATION_BUILD = "v136-modal-staging-10"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -343,6 +343,29 @@ def volume_fs_probe() -> dict:
                 UV_NO_CONFIG="1",
                 RUST_BACKTRACE="1",
             )
+            uv_pip_result = subprocess.run(
+                [
+                    str(uv_candidates[0]), "pip", "install", "--python",
+                    str(venv / "bin" / "python"), "--link-mode", "copy",
+                    "packaging==24.2",
+                ],
+                env=env, capture_output=True, text=True, timeout=180,
+            )
+            packaging_check = subprocess.run(
+                [
+                    str(venv / "bin" / "python"), "-c",
+                    "import packaging; print(packaging.__version__)",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            result["uv_pip_into_stdlib_venv"] = {
+                "returncode": uv_pip_result.returncode,
+                "stdout": uv_pip_result.stdout[-4000:],
+                "stderr": uv_pip_result.stderr[-8000:],
+                "installed_version": packaging_check.stdout.strip(),
+                "import_returncode": packaging_check.returncode,
+            }
+
             uv_venv = root / "uv-venv"
             uv_venv_result = subprocess.run(
                 [
