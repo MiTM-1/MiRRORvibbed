@@ -93,6 +93,9 @@ class ModalContractTests(unittest.TestCase):
             self.assertIn("OAI-Sites-Authorization", source)
         self.assertIn("site_headers('video/mp4')", renderer)
         self.assertIn("_site_headers('image/png')", dispatcher)
+        self.assertIn("MIRRORVISION_SITE_ACCESS_BEARER", self.source)
+        self.assertIn("OAI-Sites-Authorization", self.source)
+        self.assertIn("site_access_bearer", self.source)
 
     def test_private_preview_api_is_proxy_authenticated_and_gpu_locked(self):
         self.assertIn('@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)', self.source)
@@ -105,6 +108,8 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn('_notify_callback(webhook, state)', self.source)
         self.assertIn('"capabilities", "mirrorvision_health", "h3_runtime_audit", "h3_ref2va_status"', self.source)
         self.assertIn('"https://mirrorvidgen-modal-preview.mitm1.chatgpt.site"', self.source)
+        self.assertIn('request.get("siteAccessBearer")', self.source)
+        self.assertIn('submit.remote(payload, webhook, site_access_bearer)', self.source)
 
 
 if __name__ == "__main__":
