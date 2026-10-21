@@ -24,7 +24,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-17"
+MIGRATION_BUILD = "v136-modal-staging-18"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -197,9 +197,14 @@ def _notify_callback(webhook: str, state: dict) -> None:
     if not _callback_allowed(webhook):
         return
     try:
+        headers = {}
+        site_access_bearer = os.environ.get("MIRRORVISION_SITE_ACCESS_BEARER", "").strip()
+        if site_access_bearer:
+            headers["OAI-Sites-Authorization"] = f"Bearer {site_access_bearer}"
         requests.post(
             webhook,
             json={"id": state["id"], "status": state["status"]},
+            headers=headers,
             timeout=20,
             allow_redirects=False,
         ).raise_for_status()
@@ -247,10 +252,24 @@ def _execute(job_id: str, payload: dict, runtime: str, webhook: str = "") -> dic
     max_containers=1,
     scaledown_window=2,
 )
-def native_job(job_id: str, payload: dict, webhook: str = "") -> dict:
+def native_job(
+    job_id: str,
+    payload: dict,
+    webhook: str = "",
+    site_access_bearer: str = "",
+) -> dict:
     if str(payload.get("action") or "").lower() not in {"mirrorvision_render", "mirrorvision_health"}:
         raise ValueError("The CPU renderer only accepts MiRRORvision native actions")
-    return _execute(job_id, payload, "native-cpu", webhook)
+    previous_bearer = os.environ.get("MIRRORVISION_SITE_ACCESS_BEARER")
+    if site_access_bearer:
+        os.environ["MIRRORVISION_SITE_ACCESS_BEARER"] = site_access_bearer
+    try:
+        return _execute(job_id, payload, "native-cpu", webhook)
+    finally:
+        if previous_bearer is None:
+            os.environ.pop("MIRRORVISION_SITE_ACCESS_BEARER", None)
+        else:
+            os.environ["MIRRORVISION_SITE_ACCESS_BEARER"] = previous_bearer
 
 
 @app.function(
@@ -546,12 +565,12 @@ def gpu_identity() -> dict:
 
 
 @app.function(image=worker_image, volumes={str(VOLUME_ROOT): volume}, timeout=300)
-def submit(payload: dict, webhook: str = "") -> dict:
+def submit(payload: dict, webhook: str = "", site_access_bearer: str = "") -> dict:
     action = str(payload.get("action") or "").strip().lower()
     job_id = f"modal-{uuid.uuid4().hex}"
     _write_status(job_id, {"id": job_id, "status": "IN_QUEUE"})
     if action == "mirrorvision_render":
-        call = native_job.spawn(job_id, payload, webhook)
+        call = native_job.spawn(job_id, payload, webhook, site_access_bearer)
     else:
         call = h3_job.spawn(job_id, payload, webhook)
     state = {
@@ -626,7 +645,13 @@ def api(request: dict) -> dict:
         webhook = str(request.get("webhook") or "")
         if webhook and not _callback_allowed(webhook):
             raise HTTPException(status_code=422, detail="The callback origin is not allowed.")
-        return submit.remote(payload, webhook)
+        site_access_bearer = str(request.get("siteAccessBearer") or "").strip()
+        if len(site_access_bearer) < 20:
+            raise HTTPException(
+                status_code=422,
+                detail="A private Site access bearer is required for native rendering.",
+            )
+        return submit.remote(payload, webhook, site_access_bearer)
     if operation == "status":
         job_id = str(request.get("id") or "")
         return status.remote(job_id)
