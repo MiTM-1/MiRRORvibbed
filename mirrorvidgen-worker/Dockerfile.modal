@@ -3,7 +3,7 @@ FROM runpod/worker-comfyui:5.10.0-base
 USER root
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl ffmpeg ca-certificates build-essential fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends git curl ffmpeg ca-certificates build-essential python3.12-dev fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 RUN rm -rf /comfyui/custom_nodes/ComfyUI-LTXVideo \
