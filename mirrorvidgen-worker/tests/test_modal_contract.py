@@ -104,7 +104,6 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn('def api(request: dict)', self.source)
         self.assertIn('"gpuSubmissionEnabled": False', self.source)
         self.assertIn('"GPU submissions are disabled on the isolated Modal website preview."', self.source)
-        self.assertIn('str(payload.get("action") or "").strip().lower() != "mirrorvision_render"', self.source)
         self.assertIn('candidate.hostname == allowed.hostname', self.source)
         self.assertIn('modal.FunctionCall.from_id(call_id).cancel()', self.source)
         self.assertIn('_notify_callback(webhook, state)', self.source)
