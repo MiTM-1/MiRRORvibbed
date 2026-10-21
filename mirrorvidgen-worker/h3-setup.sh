@@ -162,6 +162,16 @@ command_new = """    def command(self, label, args, env=None, cwd=None):
                 executable = str(tail[position + 1])
                 del tail[position:position + 2]
             executable = executable or str(self.pythons['engine'])
+            # uv accepts a package-scoped reinstall flag that pip does not.
+            # The install target is already present later in the command, so
+            # translate it to pip's equivalent force-reinstall behavior.
+            while '--reinstall-package' in tail:
+                position = tail.index('--reinstall-package')
+                if position + 1 >= len(tail):
+                    raise RuntimeError('Malformed uv pip command has no reinstall package')
+                del tail[position:position + 2]
+                if '--force-reinstall' not in tail:
+                    tail.insert(0, '--force-reinstall')
             args = [executable, '-m', 'pip', str(args[2]), *tail]
         from .ram import ProcessMemory
 """
