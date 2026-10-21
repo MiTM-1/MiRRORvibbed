@@ -24,7 +24,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-19"
+MIGRATION_BUILD = "v136-modal-staging-20"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -590,6 +590,8 @@ def submit(payload: dict, webhook: str = "", site_access_bearer: str = "") -> di
     _write_status(job_id, {"id": job_id, "status": "IN_QUEUE"})
     if action == "mirrorvision_render":
         call = native_job.spawn(job_id, payload, webhook, site_access_bearer)
+    elif action == "capabilities":
+        call = maintenance_job.spawn(job_id, payload)
     else:
         call = h3_job.spawn(job_id, payload, webhook)
     state = {
@@ -660,7 +662,7 @@ def api(request: dict) -> dict:
         payload = request.get("input")
         if not isinstance(payload, dict):
             raise HTTPException(status_code=422, detail="A worker input object is required.")
-        if str(payload.get("action") or "").strip().lower() != "mirrorvision_render":
+        if str(payload.get("action") or "").strip().lower() not in {"mirrorvision_render", "capabilities"}:
             raise HTTPException(
                 status_code=423,
                 detail="GPU submissions are disabled on the isolated Modal website preview.",
