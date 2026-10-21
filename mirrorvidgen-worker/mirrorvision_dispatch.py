@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -24,6 +25,16 @@ from mirrorvision_renderer import handle as render, extract_boundary
 # incompatible protocol to already-deployed Site builds.
 CONTRACT_VERSION = 1
 QUALITY_VERSION = 3
+
+
+def _site_headers(content_type=None):
+    headers = {"User-Agent": "MiRRORvidgen-Worker/1.0"}
+    bearer = os.environ.get("MIRRORVISION_SITE_ACCESS_BEARER", "").strip()
+    if bearer:
+        headers["OAI-Sites-Authorization"] = f"Bearer {bearer}"
+    if content_type:
+        headers["Content-Type"] = content_type
+    return headers
 
 
 def _healthy():
@@ -90,7 +101,7 @@ def _output_bytes(result):
     if kind == "network_path":
         return Path(value).read_bytes()
     if kind == "url":
-        with urllib.request.urlopen(urllib.request.Request(value, headers={"User-Agent":"MiRRORvidgen-Worker/1.0"}), timeout=180) as response:
+        with urllib.request.urlopen(urllib.request.Request(value, headers=_site_headers()), timeout=180) as response:
             return response.read(200*1024*1024+1)
     raise RuntimeError("Unsupported H3 result transport for continuity extraction")
 
@@ -108,7 +119,7 @@ def _upload_boundary(result, target):
         extract_boundary(str(source), str(frame))
         body=frame.read_bytes()
     for attempt in range(8):
-        request=urllib.request.Request(str(target),data=body,headers={'User-Agent':'MiRRORvidgen-Worker/1.0','Content-Type':'image/png'},method='POST')
+        request=urllib.request.Request(str(target),data=body,headers=_site_headers('image/png'),method='POST')
         try:
             with urllib.request.urlopen(request,timeout=90) as response:
                 if response.status==200: return
