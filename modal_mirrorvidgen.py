@@ -17,13 +17,14 @@ import sys
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import urlparse
 
 import modal
 import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-16"
+MIGRATION_BUILD = "v136-modal-staging-17"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -158,13 +159,55 @@ def _load_handler():
 def _write_status(job_id: str, data: dict) -> None:
     STATUS_ROOT.mkdir(parents=True, exist_ok=True)
     target = STATUS_ROOT / f"{job_id}.json"
+    existing = {}
+    if target.is_file():
+        try:
+            existing = json.loads(target.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            existing = {}
     temp = target.with_suffix(".tmp")
-    temp.write_text(json.dumps(data, separators=(",", ":")), encoding="utf-8")
+    temp.write_text(
+        json.dumps({**existing, **data}, separators=(",", ":")),
+        encoding="utf-8",
+    )
     temp.replace(target)
     volume.commit()
 
 
-def _execute(job_id: str, payload: dict, runtime: str) -> dict:
+def _callback_allowed(webhook: str) -> bool:
+    if not webhook:
+        return False
+    allowed = urlparse(
+        os.environ.get(
+            "MIRRORVISION_SITE_ORIGIN",
+            "https://mirrorvidgen-modal-preview.mitm1.chatgpt.site",
+        )
+    )
+    candidate = urlparse(webhook)
+    return (
+        candidate.scheme == "https"
+        and candidate.hostname == allowed.hostname
+        and candidate.port == allowed.port
+        and candidate.username is None
+        and candidate.password is None
+    )
+
+
+def _notify_callback(webhook: str, state: dict) -> None:
+    if not _callback_allowed(webhook):
+        return
+    try:
+        requests.post(
+            webhook,
+            json={"id": state["id"], "status": state["status"]},
+            timeout=20,
+            allow_redirects=False,
+        ).raise_for_status()
+    except requests.RequestException as error:
+        print(f"Modal callback delivery failed for {state['id']}: {error}", flush=True)
+
+
+def _execute(job_id: str, payload: dict, runtime: str, webhook: str = "") -> dict:
     started = time.time()
     _write_status(job_id, {"id": job_id, "status": "IN_PROGRESS", "runtime": runtime})
     try:
@@ -179,6 +222,7 @@ def _execute(job_id: str, payload: dict, runtime: str) -> dict:
             "output": result,
         }
         _write_status(job_id, state)
+        _notify_callback(webhook, state)
         return state
     except Exception as error:
         state = {
@@ -189,6 +233,7 @@ def _execute(job_id: str, payload: dict, runtime: str) -> dict:
             "error": str(error),
         }
         _write_status(job_id, state)
+        _notify_callback(webhook, state)
         raise
 
 
@@ -202,10 +247,10 @@ def _execute(job_id: str, payload: dict, runtime: str) -> dict:
     max_containers=1,
     scaledown_window=2,
 )
-def native_job(job_id: str, payload: dict) -> dict:
+def native_job(job_id: str, payload: dict, webhook: str = "") -> dict:
     if str(payload.get("action") or "").lower() not in {"mirrorvision_render", "mirrorvision_health"}:
         raise ValueError("The CPU renderer only accepts MiRRORvision native actions")
-    return _execute(job_id, payload, "native-cpu")
+    return _execute(job_id, payload, "native-cpu", webhook)
 
 
 @app.function(
@@ -219,11 +264,11 @@ def native_job(job_id: str, payload: dict) -> dict:
     max_containers=1,
     scaledown_window=2,
 )
-def h3_job(job_id: str, payload: dict) -> dict:
+def h3_job(job_id: str, payload: dict, webhook: str = "") -> dict:
     _enable_modal_rss_guard()
     if _requires_comfy(payload):
         _ensure_comfy()
-    return _execute(job_id, payload, "h3-gpu")
+    return _execute(job_id, payload, "h3-gpu", webhook)
 
 
 @app.function(
@@ -256,7 +301,9 @@ def h3_bootstrap_job(job_id: str, payload: dict) -> dict:
 )
 def maintenance_job(job_id: str, payload: dict) -> dict:
     action = str(payload.get("action") or "").strip().lower()
-    if action not in {"h3_runtime_audit", "h3_ref2va_status"}:
+    if action not in {
+        "capabilities", "mirrorvision_health", "h3_runtime_audit", "h3_ref2va_status"
+    }:
         raise ValueError("The CPU maintenance function only accepts read-only audit actions")
     return _execute(job_id, payload, "maintenance-cpu")
 
@@ -499,14 +546,14 @@ def gpu_identity() -> dict:
 
 
 @app.function(image=worker_image, volumes={str(VOLUME_ROOT): volume}, timeout=300)
-def submit(payload: dict) -> dict:
+def submit(payload: dict, webhook: str = "") -> dict:
     action = str(payload.get("action") or "").strip().lower()
     job_id = f"modal-{uuid.uuid4().hex}"
     _write_status(job_id, {"id": job_id, "status": "IN_QUEUE"})
     if action == "mirrorvision_render":
-        call = native_job.spawn(job_id, payload)
+        call = native_job.spawn(job_id, payload, webhook)
     else:
-        call = h3_job.spawn(job_id, payload)
+        call = h3_job.spawn(job_id, payload, webhook)
     state = {
         "id": job_id,
         "status": "IN_QUEUE",
@@ -523,6 +570,83 @@ def status(job_id: str) -> dict:
     if not path.is_file():
         return {"id": job_id, "status": "NOT_FOUND"}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.function(image=worker_image, volumes={str(VOLUME_ROOT): volume}, timeout=60)
+def cancel(job_id: str) -> dict:
+    current = status.remote(job_id)
+    call_id = str(current.get("functionCallId") or "")
+    if call_id and current.get("status") not in {"COMPLETED", "FAILED", "CANCELLED"}:
+        try:
+            modal.FunctionCall.from_id(call_id).cancel()
+        except Exception as error:
+            print(f"Modal cancellation warning for {job_id}: {error}", flush=True)
+    state = {"id": job_id, "status": "CANCELLED"}
+    _write_status(job_id, state)
+    return state
+
+
+@app.function(
+    image=worker_image,
+    volumes={str(VOLUME_ROOT): volume},
+    cpu=1,
+    memory=1024,
+    timeout=300,
+    min_containers=0,
+    max_containers=1,
+    scaledown_window=2,
+)
+@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)
+def api(request: dict) -> dict:
+    from fastapi import HTTPException
+
+    operation = str(request.get("op") or "").strip().lower()
+    if operation == "health":
+        return {
+            "status": "healthy",
+            "build": MIGRATION_BUILD,
+            "provider": "modal",
+            "gpu": GPU_KIND,
+            "gpuSubmissionEnabled": False,
+            "workers": {
+                "idle": 0, "initializing": 0, "ready": 0,
+                "running": 0, "throttled": 0, "unhealthy": 0,
+            },
+            "jobs": {"inQueue": 0, "inProgress": 0, "completed": 0, "failed": 0},
+        }
+    if operation == "run":
+        payload = request.get("input")
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=422, detail="A worker input object is required.")
+        if str(payload.get("action") or "").strip().lower() != "mirrorvision_render":
+            raise HTTPException(
+                status_code=423,
+                detail="GPU submissions are disabled on the isolated Modal website preview.",
+            )
+        webhook = str(request.get("webhook") or "")
+        if webhook and not _callback_allowed(webhook):
+            raise HTTPException(status_code=422, detail="The callback origin is not allowed.")
+        return submit.remote(payload, webhook)
+    if operation == "status":
+        job_id = str(request.get("id") or "")
+        return status.remote(job_id)
+    if operation == "cancel":
+        job_id = str(request.get("id") or "")
+        return cancel.remote(job_id)
+    if operation == "runsync":
+        payload = request.get("input")
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=422, detail="A worker input object is required.")
+        action = str(payload.get("action") or "").strip().lower()
+        if action not in {
+            "capabilities", "mirrorvision_health", "h3_runtime_audit", "h3_ref2va_status"
+        }:
+            raise HTTPException(
+                status_code=423,
+                detail="This preview permits read-only checks and native CPU rendering only.",
+            )
+        return maintenance_job.remote(f"modal-sync-{uuid.uuid4().hex}", payload)
+    raise HTTPException(status_code=404, detail="Unsupported Modal staging operation.")
 
 
 @app.local_entrypoint()
