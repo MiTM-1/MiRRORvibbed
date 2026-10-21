@@ -9,7 +9,7 @@ RUN apt-get update \
 RUN rm -rf /comfyui/custom_nodes/ComfyUI-LTXVideo \
     && git clone --depth 1 https://github.com/Lightricks/ComfyUI-LTXVideo.git /comfyui/custom_nodes/ComfyUI-LTXVideo \
     && /opt/venv/bin/python -m pip install --no-cache-dir -r /comfyui/custom_nodes/ComfyUI-LTXVideo/requirements.txt \
-    && /opt/venv/bin/python -m pip install --no-cache-dir "kornia==0.8.2" "transformers>=4.50.0,<5"
+    && /opt/venv/bin/python -m pip install --no-cache-dir "kornia==0.8.2" "transformers>=4.50.0,<5" "fastapi>=0.115,<1"
 
 COPY patch_freevideo_modal.py /tmp/patch_freevideo_modal.py
 
@@ -67,5 +67,5 @@ ENV MIRRORVIDGEN_H3_RESULTS=/runpod-volume/results
 ENV MIRRORVIDGEN_MODEL_ROOT=/runpod-volume/models
 ENV MIRRORVIDGEN_COMFY_INPUT=/comfyui/input
 ENV MIRRORVIDGEN_H3_TIMEOUT=3500
-ENV MIRRORVISION_SITE_ORIGIN=https://mirrorvidgen.mitm1.chatgpt.site
+ENV MIRRORVISION_SITE_ORIGIN=https://mirrorvidgen-modal-preview.mitm1.chatgpt.site
 
