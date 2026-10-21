@@ -112,6 +112,8 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn('"https://mirrorvidgen-modal-preview.mitm1.chatgpt.site"', self.source)
         self.assertIn('request.get("siteAccessBearer")', self.source)
         self.assertIn('submit.remote(payload, webhook, site_access_bearer)', self.source)
+        self.assertIn('{"mirrorvision_render", "capabilities"}', self.source)
+        self.assertIn("call = maintenance_job.spawn(job_id, payload)", self.source)
 
 
 if __name__ == "__main__":
