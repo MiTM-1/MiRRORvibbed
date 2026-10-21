@@ -35,7 +35,8 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn("FREEVIDEO_PYTHON=/opt/venv/bin/python", self.dockerfile)
         self.assertIn("FREEVIDEO_UV_LINK_MODE=copy", self.dockerfile)
         self.assertIn("Applying Modal Volume Python-runtime compatibility fix", setup)
-        self.assertIn("requested = self.env.get('FREEVIDEO_PYTHON'", setup)
+        self.assertIn("requested = self.env.get('FREEVIDEO_PYTHON')", setup)
+        self.assertIn("[requested, '-m', 'venv', '--copies', folder]", setup)
         self.assertIn("Using verified Modal image Python", setup)
         self.assertIn("UV_LINK_MODE=os.environ.get('FREEVIDEO_UV_LINK_MODE'", setup)
 
