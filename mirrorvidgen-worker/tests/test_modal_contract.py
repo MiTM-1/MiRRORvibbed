@@ -69,7 +69,8 @@ class ModalContractTests(unittest.TestCase):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         }
         self.assertTrue({"native_job", "h3_job", "h3_bootstrap_job", "maintenance_job", "submit", "status"}.issubset(names))
-        self.assertIn('{"h3_runtime_audit", "h3_ref2va_status"}', self.source)
+        self.assertIn('"h3_runtime_audit"', self.source)
+        self.assertIn('"h3_ref2va_status"', self.source)
         self.assertIn('command == "h3-audit"', self.source)
         self.assertIn('command == "h3-bootstrap"', self.source)
         self.assertIn("timeout=7200", self.source)
@@ -94,7 +95,7 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn('modal.FunctionCall.from_id(call_id).cancel()', self.source)
         self.assertIn('_notify_callback(webhook, state)', self.source)
         self.assertIn('"capabilities", "mirrorvision_health", "h3_runtime_audit", "h3_ref2va_status"', self.source)
-        self.assertIn('"mirrorvidgen-modal-preview.mitm1.chatgpt.site"', self.source)
+        self.assertIn('"https://mirrorvidgen-modal-preview.mitm1.chatgpt.site"', self.source)
 
 
 if __name__ == "__main__":
