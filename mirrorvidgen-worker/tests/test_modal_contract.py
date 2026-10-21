@@ -85,6 +85,15 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn('action == "mirrorvision_health"', dispatcher)
         self.assertIn('{"action": "mirrorvision_health"}', self.source)
 
+    def test_private_site_media_requests_use_server_only_bearer(self):
+        renderer = (ROOT / "mirrorvidgen-worker" / "mirrorvision_renderer.py").read_text(encoding="utf-8")
+        dispatcher = (ROOT / "mirrorvidgen-worker" / "mirrorvision_dispatch.py").read_text(encoding="utf-8")
+        for source in (renderer, dispatcher):
+            self.assertIn("MIRRORVISION_SITE_ACCESS_BEARER", source)
+            self.assertIn("OAI-Sites-Authorization", source)
+        self.assertIn("site_headers('video/mp4')", renderer)
+        self.assertIn("_site_headers('image/png')", dispatcher)
+
     def test_private_preview_api_is_proxy_authenticated_and_gpu_locked(self):
         self.assertIn('@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)', self.source)
         self.assertIn('def api(request: dict)', self.source)
