@@ -20,7 +20,7 @@ import requests
 
 
 APP_NAME = "mirrorvidgen-v136-staging"
-MIGRATION_BUILD = "v136-modal-staging-10"
+MIGRATION_BUILD = "v136-modal-staging-11"
 GPU_KIND = "RTX-PRO-6000"
 VOLUME_NAME = "mirrorvidgen-v136-data"
 VOLUME_ROOT = Path("/runpod-volume")
@@ -330,6 +330,29 @@ def volume_fs_probe() -> dict:
                 "returncode": None,
                 "error": repr(error),
                 "python": (venv / "bin" / "python").is_file(),
+            }
+
+        if (venv / "bin" / "python").is_file():
+            pip_result = subprocess.run(
+                [
+                    str(venv / "bin" / "python"), "-m", "pip", "install",
+                    "--disable-pip-version-check", "packaging==24.2",
+                ],
+                capture_output=True, text=True, timeout=180,
+            )
+            pip_check = subprocess.run(
+                [
+                    str(venv / "bin" / "python"), "-c",
+                    "import packaging; print(packaging.__version__)",
+                ],
+                capture_output=True, text=True, timeout=30,
+            )
+            result["pip_into_stdlib_venv"] = {
+                "returncode": pip_result.returncode,
+                "stdout": pip_result.stdout[-4000:],
+                "stderr": pip_result.stderr[-8000:],
+                "installed_version": pip_check.stdout.strip(),
+                "import_returncode": pip_check.returncode,
             }
 
         uv_candidates = sorted((VOLUME_ROOT / "freevideo-h3").glob("**/uv"))
