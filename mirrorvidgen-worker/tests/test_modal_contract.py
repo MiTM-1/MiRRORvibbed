@@ -41,6 +41,9 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn("Using verified Modal image Python", setup)
         self.assertIn("FREEVIDEO_USE_PIP", setup)
         self.assertIn("args = [executable, '-m', 'pip'", setup)
+        self.assertIn("Applying Modal model-support installer compatibility fix", setup)
+        self.assertIn("if env.get('FREEVIDEO_USE_PIP') == '1' else", setup)
+        self.assertIn("Pinned FreeVideo model-support installer changed", setup)
         self.assertIn("UV_LINK_MODE=os.environ.get('FREEVIDEO_UV_LINK_MODE'", setup)
 
     def test_existing_worker_contract_is_preserved(self):
