@@ -180,6 +180,29 @@ if command_old in text:
 elif "FREEVIDEO_USE_PIP" not in text:
     raise SystemExit("Pinned FreeVideo command layout changed; refusing an unsafe Modal patch")
 
+# Upgrade persistent runtimes that received the earlier Modal pip patch before
+# the uv-only reinstall flag translation was added.
+reinstall_old = """            executable = executable or str(self.pythons['engine'])
+            args = [executable, '-m', 'pip', str(args[2]), *tail]
+"""
+reinstall_new = """            executable = executable or str(self.pythons['engine'])
+            # uv accepts a package-scoped reinstall flag that pip does not.
+            # The install target is already present later in the command, so
+            # translate it to pip's equivalent force-reinstall behavior.
+            while '--reinstall-package' in tail:
+                position = tail.index('--reinstall-package')
+                if position + 1 >= len(tail):
+                    raise RuntimeError('Malformed uv pip command has no reinstall package')
+                del tail[position:position + 2]
+                if '--force-reinstall' not in tail:
+                    tail.insert(0, '--force-reinstall')
+            args = [executable, '-m', 'pip', str(args[2]), *tail]
+"""
+if reinstall_old in text:
+    text = text.replace(reinstall_old, reinstall_new, 1)
+elif "uv accepts a package-scoped reinstall flag" not in text:
+    raise SystemExit("Pinned FreeVideo pip translation layout changed; refusing an unsafe Modal patch")
+
 path.write_text(text, encoding="utf-8")
 PY
 
