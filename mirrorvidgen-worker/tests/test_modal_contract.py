@@ -33,6 +33,7 @@ class ModalContractTests(unittest.TestCase):
     def test_modal_volume_uses_image_python_without_hardlinks(self):
         setup = (ROOT / "mirrorvidgen-worker" / "h3-setup.sh").read_text(encoding="utf-8")
         self.assertIn("FREEVIDEO_PYTHON=/opt/venv/bin/python", self.dockerfile)
+        self.assertIn("python3.12-dev", self.dockerfile)
         self.assertIn("FREEVIDEO_UV_LINK_MODE=copy", self.dockerfile)
         self.assertIn("FREEVIDEO_USE_PIP=1", self.dockerfile)
         self.assertIn("Applying Modal Volume Python-runtime compatibility fix", setup)
