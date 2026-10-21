@@ -97,8 +97,10 @@ class ModalContractTests(unittest.TestCase):
         self.assertIn("OAI-Sites-Authorization", self.source)
         self.assertIn("site_access_bearer", self.source)
 
-    def test_private_preview_api_is_proxy_authenticated_and_gpu_locked(self):
-        self.assertIn('@modal.fastapi_endpoint(method="POST", requires_proxy_auth=True)', self.source)
+    def test_private_preview_api_requires_private_site_bearer_and_is_gpu_locked(self):
+        self.assertIn('@modal.fastapi_endpoint(method="POST")', self.source)
+        self.assertIn("def _private_site_bearer_allowed", self.source)
+        self.assertIn('"Private Site authentication failed."', self.source)
         self.assertIn('def api(request: dict)', self.source)
         self.assertIn('"gpuSubmissionEnabled": False', self.source)
         self.assertIn('"GPU submissions are disabled on the isolated Modal website preview."', self.source)
