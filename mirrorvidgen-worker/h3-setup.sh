@@ -107,8 +107,12 @@ venv_old = """                if not executable.exists():
                     return self.packages(label + '-venv', [uv, 'venv', '--seed', '--python', self.versions['python'], folder])
 """
 venv_new = """                if not executable.exists():
-                    requested = self.env.get('FREEVIDEO_PYTHON', self.versions['python'])
-                    return self.packages(label + '-venv', [uv, 'venv', '--seed', '--python', requested, folder])
+                    requested = self.env.get('FREEVIDEO_PYTHON')
+                    if requested:
+                        return self.command(label + '-venv-modal',
+                                            [requested, '-m', 'venv', '--copies', folder])
+                    return self.packages(label + '-venv',
+                                         [uv, 'venv', '--seed', '--python', self.versions['python'], folder])
 """
 if venv_old in text:
     text = text.replace(venv_old, venv_new, 1)
