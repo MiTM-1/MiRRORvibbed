@@ -1,8 +1,8 @@
-Generated: 2026-10-31T17:15:44.082149+00:00
+Generated: 2026-11-01T06:10:37.526060+00:00
 Mapped channels: 61
-Programmes: 6301
-Programmes with titles: 6301
-Programmes with descriptions: 6242
+Programmes: 6296
+Programmes with titles: 6296
+Programmes with descriptions: 6239
 
 Mapped IDs:
 WNBC471.us@HD <- locals:WNBC-DT.us_locals1
