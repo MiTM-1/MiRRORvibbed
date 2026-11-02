@@ -1,4 +1,4 @@
-Generated: 2026-11-02T06:10:00.488929+00:00
+Generated: 2026-11-02T21:43:44.684478+00:00
 Mapped channels: 61
 Programmes: 6476
 Programmes with titles: 6476
