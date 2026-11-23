@@ -1,0 +1,62 @@
+name: Build isolated H3 add-ons candidate
+on:
+  push:
+    branches: [dev/h3-motion-turbo-preparation-20261008]
+    paths:
+      - '.github/workflows/build-h3-addons-candidate.yml'
+      - 'mirrorvidgen-worker/Dockerfile.addons'
+      - 'mirrorvidgen-worker/h3_addon*.py'
+      - 'mirrorvidgen-worker/h3_context_store.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  build:
+    if: startsWith(github.ref, 'refs/heads/dev/h3-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make room for the inherited worker image
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          df -h /
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        id: candidate
+        with:
+          context: ./mirrorvidgen-worker
+          file: ./mirrorvidgen-worker/Dockerfile.addons
+          platforms: linux/amd64
+          push: true
+          tags: ghcr.io/mitm-1/mirrorvidgen-worker:h3-addons-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/MiTM-1/MiRRORvibbed
+            org.opencontainers.image.description=Experimental H3 add-ons; paid tests disabled by default
+      - name: Release build cache before CPU validation
+        run: docker buildx prune -af
+      - name: Verify CPU startup and installed node contracts
+        env:
+          IMAGE: ghcr.io/mitm-1/mirrorvidgen-worker@${{ steps.candidate.outputs.digest }}
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+          docker run --rm --entrypoint /opt/venv/bin/python -e CUDA_VISIBLE_DEVICES= "$IMAGE" /h3_addons_cpu_check.py 2>&1 | tee h3-addons-cpu-report.log
+      - name: Compare inherited dependency state
+        if: always()
+        run: |
+          docker run --rm --entrypoint /opt/venv/bin/python ghcr.io/mitm-1/mirrorvidgen-worker:7b21b2c015b21a512498cdcaa357da4720208cad -m pip check > h3-base-dependencies.log 2>&1 || true
+      - name: Save validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h3-addons-cpu-evidence
+          path: |
+            h3-addons-cpu-report.log
+            h3-base-dependencies.log
